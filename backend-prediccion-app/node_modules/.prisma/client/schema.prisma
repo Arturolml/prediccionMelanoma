@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model evaluaciones {
+  id_evaluacion                                                       Int               @id @default(autoincrement())
+  id_lesion                                                           Int?
+  fecha_evaluacion                                                    DateTime?         @default(now()) @db.Timestamp(6)
+  id_usuario_registro                                                 Int?
+  id_medico_validador                                                 Int?
+  ruta_imagen                                                         String            @db.VarChar(255)
+  prediccion_ia                                                       Decimal?          @db.Decimal(5, 2)
+  asimetria                                                           Boolean?          @default(false)
+  bordes_irregulares                                                  Boolean?          @default(false)
+  color_variable                                                      Boolean?          @default(false)
+  diametro_mm                                                         Decimal?          @db.Decimal(4, 1)
+  evolucion_cambios                                                   Boolean?          @default(false)
+  sintoma_sangrado                                                    Boolean?          @default(false)
+  sintoma_picazon                                                     Boolean?          @default(false)
+  sintoma_dolor                                                       Boolean?          @default(false)
+  sintoma_ulceracion                                                  Boolean?          @default(false)
+  diagnostico_medico                                                  tipo_diagnostico?
+  notas_medico                                                        String?
+  requiere_biopsia                                                    Boolean?          @default(false)
+  lesiones                                                            lesiones?         @relation(fields: [id_lesion], references: [id_lesion], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_sistema_evaluaciones_id_medico_validadorTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_medico_validadorTousuarios_sistema", fields: [id_medico_validador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  usuarios_sistema_evaluaciones_id_usuario_registroTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_usuario_registroTousuarios_sistema", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([fecha_evaluacion], map: "idx_evaluacion_fecha")
+}
+
+model lesiones {
+  id_lesion       Int            @id @default(autoincrement())
+  id_paciente     Int?
+  zona_cuerpo     String         @db.VarChar(100)
+  fecha_deteccion DateTime?      @default(dbgenerated("CURRENT_DATE")) @db.Date
+  notas_ubicacion String?
+  evaluaciones    evaluaciones[]
+  pacientes       pacientes?     @relation(fields: [id_paciente], references: [id_paciente], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model pacientes {
+  id_paciente             Int        @id @default(autoincrement())
+  nombres                 String     @db.VarChar(100)
+  apellido_paterno        String     @db.VarChar(50)
+  apellido_materno        String?    @db.VarChar(50)
+  curp                    String     @unique @db.VarChar(18)
+  fecha_nacimiento        DateTime   @db.Date
+  sexo                    tipo_sexo
+  fototipo_fitzpatrick    Int?       @db.SmallInt
+  antecedentes_familiares Boolean?   @default(false)
+  notas_antecedentes      String?
+  historial_cancer_previo Boolean?   @default(false)
+  inmunosuprimido         Boolean?   @default(false)
+  fecha_registro          DateTime?  @default(now()) @db.Timestamp(6)
+  lesiones                lesiones[]
+
+  @@index([curp], map: "idx_paciente_curp")
+  @@index([apellido_paterno], map: "idx_paciente_paterno")
+}
+
+model usuarios_sistema {
+  id_usuario                                                      Int            @id @default(autoincrement())
+  nombre_completo                                                 String         @db.VarChar(150)
+  email                                                           String         @unique @db.VarChar(150)
+  password_hash                                                   String         @db.VarChar(255)
+  rol                                                             tipo_rol
+  cedula_profesional                                              String?        @db.VarChar(50)
+  telefono_contacto                                               String?        @db.VarChar(20)
+  activo                                                          Boolean?       @default(true)
+  fecha_creacion                                                  DateTime?      @default(now()) @db.Timestamp(6)
+  evaluaciones_evaluaciones_id_medico_validadorTousuarios_sistema evaluaciones[] @relation("evaluaciones_id_medico_validadorTousuarios_sistema")
+  evaluaciones_evaluaciones_id_usuario_registroTousuarios_sistema evaluaciones[] @relation("evaluaciones_id_usuario_registroTousuarios_sistema")
+
+  @@index([email], map: "idx_usuario_email")
+}
+
+enum tipo_diagnostico {
+  Benigno
+  Sospechoso
+  Maligno_Melanoma @map("Maligno/Melanoma")
+  Indeterminado
+}
+
+enum tipo_rol {
+  admin
+  medico
+  enfermero
+}
+
+enum tipo_sexo {
+  M
+  F
+  Otro
+}
