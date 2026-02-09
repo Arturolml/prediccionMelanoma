@@ -1,26 +1,38 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateLesioneDto } from './dto/create-lesione.dto';
-import { UpdateLesioneDto } from './dto/update-lesione.dto';
+import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
 export class LesionesService {
-  create(createLesioneDto: CreateLesioneDto) {
-    return 'This action adds a new lesione';
+
+  constructor(private prisma: PrismaService) { }
+
+  async create(createLesioneDto: CreateLesioneDto) {
+    return await this.prisma.lesiones.create({
+      data: {
+        ...createLesioneDto,
+      }
+    });
   }
 
-  findAll() {
-    return `This action returns all lesiones`;
+  async findAll(id_paciente?: number) {
+    return await this.prisma.lesiones.findMany({
+      where: id_paciente ? { id_paciente } : {},
+      orderBy: {
+        id_lesion: 'desc',
+      }
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} lesione`;
-  }
+  async findOne(id: number) {
+    const lesion = await this.prisma.lesiones.findUnique({
+      where: { id_lesion: id }
+    });
 
-  update(id: number, updateLesioneDto: UpdateLesioneDto) {
-    return `This action updates a #${id} lesione`;
-  }
+    if (!lesion) {
+      throw new NotFoundException(`Lesión con ID ${id} no encontrada`);
+    }
 
-  remove(id: number) {
-    return `This action removes a #${id} lesione`;
+    return lesion;
   }
 }

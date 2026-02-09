@@ -1,11 +1,10 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { EvaluacionesService } from './evaluaciones.service';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
-import { UpdateEvaluacioneDto } from './dto/update-evaluacione.dto';
 
 @Controller('evaluaciones')
 export class EvaluacionesController {
-  constructor(private readonly evaluacionesService: EvaluacionesService) {}
+  constructor(private readonly evaluacionesService: EvaluacionesService) { }
 
   @Post()
   create(@Body() createEvaluacioneDto: CreateEvaluacioneDto) {
@@ -13,22 +12,18 @@ export class EvaluacionesController {
   }
 
   @Get()
-  findAll() {
-    return this.evaluacionesService.findAll();
+  findAll(
+    @Query('id_paciente') id_paciente?: string,
+    @Query('id_lesion') id_lesion?: string,
+  ) {
+    return this.evaluacionesService.findAll(
+      id_paciente ? +id_paciente : undefined,
+      id_lesion ? +id_lesion : undefined,
+    );
   }
 
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.evaluacionesService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateEvaluacioneDto: UpdateEvaluacioneDto) {
-    return this.evaluacionesService.update(+id, updateEvaluacioneDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.evaluacionesService.remove(+id);
   }
 }

@@ -27,7 +27,7 @@ export class CreatePacienteDto {
 
     @ApiProperty({ example: '2000-01-01' })
     @IsString()
-    fecha_nacimiento!: string
+    fecha_nacimiento!: Date
 
 
 

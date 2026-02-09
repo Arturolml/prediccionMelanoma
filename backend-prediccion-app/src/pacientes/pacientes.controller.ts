@@ -13,7 +13,7 @@ export class PacientesController {
   }
 
   @Get()
-  findAll() {
+  async findAll() {
     return this.pacientesService.findAll();
   }
 

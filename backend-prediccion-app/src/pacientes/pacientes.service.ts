@@ -21,8 +21,11 @@ export class PacientesService {
     })
   }
 
-  findAll() {
-    return `This action returns all pacientes`;
+  async findAll() {
+    return this.prisma.pacientes.findMany();
+    orderBy: {
+      apellido_paterno: 'asc'
+    }
   }
 
   findOne(id: number) {
