@@ -22,21 +22,26 @@ export class PacientesService {
   }
 
   async findAll() {
-    return this.prisma.pacientes.findMany();
-    orderBy: {
-      apellido_paterno: 'asc'
-    }
+    return this.prisma.pacientes.findMany({
+      orderBy: {
+        apellido_paterno: 'asc'
+      }
+    });
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} paciente`;
+  async findOne(id: number) {
+    const paciente = await this.prisma.pacientes.findUnique({
+      where: { id_paciente: id }
+    });
+    return paciente;
   }
 
-  update(id: number, updatePacienteDto: UpdatePacienteDto) {
-    return `This action updates a #${id} paciente`;
+  async update(id: number, updatePacienteDto: UpdatePacienteDto) {
+    return this.prisma.pacientes.update({
+      where: { id_paciente: id },
+      data: updatePacienteDto
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} paciente`;
-  }
+
 }

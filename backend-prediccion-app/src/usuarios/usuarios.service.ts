@@ -28,15 +28,37 @@ export class UsuariosService {
     return this.prisma.usuarios_sistema.findMany();
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} usuario`;
+  async findOne(id: number) {
+    const usuario = await this.prisma.usuarios_sistema.findUnique({
+      where: { id_usuario: id }
+    });
+    if (!usuario) return null;
+    const { password_hash, ...result } = usuario;
+    return result;
   }
 
-  update(id: number, updateUsuarioDto: UpdateUsuarioDto) {
-    return `This action updates a #${id} usuario`;
+  async update(id: number, dto: UpdateUsuarioDto) {
+    const data: any = { ...dto };
+    if (data.password) {
+      data.password_hash = await bcrypt.hash(data.password, 10);
+      delete data.password;
+    }
+    return this.prisma.usuarios_sistema.update({
+      where: { id_usuario: id },
+      data
+    });
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} usuario`;
+  async findOneByEmail(email: string) {
+    return this.prisma.usuarios_sistema.findUnique({
+      where: { email },
+    });
+  }
+
+  async toggleStatus(id: number, activo: boolean) {
+    return this.prisma.usuarios_sistema.update({
+      where: { id_usuario: id },
+      data: { activo }
+    });
   }
 }
