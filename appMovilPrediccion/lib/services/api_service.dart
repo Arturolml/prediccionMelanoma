@@ -11,7 +11,7 @@ class ApiService {
 
   ApiService._internal();
 
-  static const String baseUrl = 'http://192.168.100.20:3000';
+  static const String baseUrl = 'https://liaaproyectos.uaz.edu.mx';
   String? _token;
 
   // --- Auth ---

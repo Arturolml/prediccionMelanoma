@@ -4,7 +4,7 @@ services:
   backend:
     build: .
     ports:
-      - "3000:3000"
+      - "3007:3007"
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/medical_detection_db
       - JWT_SECRET=supersecretkey
