@@ -1,5 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { IsDateString, IsNumber, IsOptional, IsString } from "class-validator";
+import { Type } from "class-transformer";
+import { IsDate, IsNumber, IsOptional, IsString } from "class-validator";
 
 
 
@@ -16,7 +17,8 @@ export class CreateLesioneDto {
 
     @ApiProperty({ example: '2024-01-01' })
     @IsOptional()
-    @IsDateString()
+    @IsDate()
+    @Type(() => Date)
     fecha_deteccion?: Date;
 
     @ApiProperty({ example: 'Lesion cercana al hombro derecho' })

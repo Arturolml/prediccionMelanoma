@@ -9,10 +9,10 @@ datasource db {
 
 model evaluaciones {
   id_evaluacion                                                       Int               @id @default(autoincrement())
-  id_lesion                                                           Int?
-  fecha_evaluacion                                                    DateTime?         @default(now()) @db.Timestamp(6)
-  id_usuario_registro                                                 Int?
-  id_medico_validador                                                 Int?
+  id_lesion                                                           Int               // Ahora obligatorio
+  fecha_evaluacion                                                    DateTime          @default(now()) @db.Timestamp(6)
+  id_usuario_registro                                                 Int               // Ahora obligatorio
+  id_medico_validador                                                 Int               // Ahora obligatorio
   ruta_imagen                                                         String            @db.VarChar(255)
   prediccion_ia                                                       Decimal?          @db.Decimal(5, 2)
   asimetria                                                           Boolean?          @default(false)
@@ -27,9 +27,11 @@ model evaluaciones {
   diagnostico_medico                                                  tipo_diagnostico?
   notas_medico                                                        String?
   requiere_biopsia                                                    Boolean?          @default(false)
-  lesiones                                                            lesiones?         @relation(fields: [id_lesion], references: [id_lesion], onDelete: Cascade, onUpdate: NoAction)
-  usuarios_sistema_evaluaciones_id_medico_validadorTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_medico_validadorTousuarios_sistema", fields: [id_medico_validador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
-  usuarios_sistema_evaluaciones_id_usuario_registroTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_usuario_registroTousuarios_sistema", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+
+  // Relaciones
+  lesiones                                                            lesiones          @relation(fields: [id_lesion], references: [id_lesion], onDelete: Cascade, onUpdate: NoAction)
+  usuarios_sistema_evaluaciones_id_medico_validadorTousuarios_sistema usuarios_sistema  @relation("evaluaciones_id_medico_validadorTousuarios_sistema", fields: [id_medico_validador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
+  usuarios_sistema_evaluaciones_id_usuario_registroTousuarios_sistema usuarios_sistema  @relation("evaluaciones_id_usuario_registroTousuarios_sistema", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([fecha_evaluacion], map: "idx_evaluacion_fecha")
 }
@@ -44,7 +46,6 @@ model lesiones {
   pacientes       pacientes?     @relation(fields: [id_paciente], references: [id_paciente], onDelete: Cascade, onUpdate: NoAction)
 }
 
-/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model pacientes {
   id_paciente             Int        @id @default(autoincrement())
   nombres                 String     @db.VarChar(100)

@@ -5,19 +5,16 @@ import { IsInt, IsOptional, IsString, IsNumber, IsBoolean } from "class-validato
 
 export class CreateEvaluacioneDto {
     @ApiProperty({ example: 1 })
-    @IsOptional()
     @IsInt()
-    id_lesion?: number;
+    id_lesion!: number;
 
     @ApiProperty({ example: 1 })
-    @IsOptional()
     @IsInt()
-    id_usuario_registro?: number;
+    id_usuario_registro!: number;
 
     @ApiProperty({ example: 2 })
-    @IsOptional()
     @IsInt()
-    id_medico_validador?: number;
+    id_medico_validador!: number;
 
     @ApiProperty({ example: '/uploads/img1.jpg' })
     @IsString()
@@ -76,4 +73,7 @@ export class CreateEvaluacioneDto {
     @IsOptional()
     @IsBoolean()
     requiere_biopsia?: boolean;
+
+    @IsOptional()
+    fecha_evaluacion?: Date;
 }

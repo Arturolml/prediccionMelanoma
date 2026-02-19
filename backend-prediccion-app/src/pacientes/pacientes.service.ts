@@ -17,6 +17,11 @@ export class PacientesService {
         curp: dto.curp,
         sexo: dto.sexo,
         fecha_nacimiento: dto.fecha_nacimiento,
+        fototipo_fitzpatrick: dto.fototipo_fitzpatrick,
+        antecedentes_familiares: dto.antecedentes_familiares,
+        notas_antecedentes: dto.notas_antecedentes,
+        historial_cancer_previo: dto.historial_cancer_previo,
+        inmunosuprimido: dto.inmunosuprimido,
       }
     })
   }
