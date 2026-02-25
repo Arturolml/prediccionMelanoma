@@ -9,6 +9,7 @@ import { EvaluacionesModule } from './evaluaciones/evaluaciones.module';
 import { AuthModule } from './auth/auth.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { EventsGateway } from './events/events.gateway';
 
 @Module({
   imports: [
@@ -24,6 +25,6 @@ import { join } from 'path';
     }),
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, EventsGateway],
 })
 export class AppModule { }

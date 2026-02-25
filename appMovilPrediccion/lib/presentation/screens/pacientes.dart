@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter_app_1/presentation/screens/crear_paciente.dart';
 import 'package:flutter_app_1/presentation/screens/detalle_paciente.dart';
 
@@ -15,11 +18,69 @@ class PacientesScreen extends StatefulWidget {
 class _PacientesScreenState extends State<PacientesScreen> {
   List<Map<String, dynamic>> patients = [];
   bool isLoading = true;
+  IO.Socket? socket;
 
   @override
   void initState() {
     super.initState();
     _loadPacientes();
+    _initSocket();
+  }
+
+  void _initSocket() {
+    final userId = ApiService().currentUserid;
+    if (userId == null) return;
+
+    socket = IO.io(ApiService.baseUrl, <String, dynamic>{
+      'transports': ['websocket'],
+      'autoConnect': false,
+    });
+
+    socket!.connect();
+
+    socket!.onConnect((_) {
+      print('✅ Socket connected');
+      socket!.emit('join_room', {'userId': userId});
+    });
+
+    socket!.on('abrir_camara', (_) async {
+      print('📸 Solicitud de cámara recibida por WebSocket!');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La Web solicita una foto. Abriendo cámara...'),
+        ),
+      );
+
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 70,
+      );
+
+      if (image != null && mounted) {
+        final bytes = await image.readAsBytes();
+        final base64String = base64Encode(bytes);
+
+        socket!.emit('foto_capturada', {
+          'userId': userId,
+          'imageBase64': 'data:image/jpeg;base64,$base64String',
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto enviada correctamente a la Web.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    socket?.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPacientes() async {

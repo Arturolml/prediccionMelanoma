@@ -22,6 +22,7 @@ export class PacientesService {
         notas_antecedentes: dto.notas_antecedentes,
         historial_cancer_previo: dto.historial_cancer_previo,
         inmunosuprimido: dto.inmunosuprimido,
+        id_usuario_registro: dto.id_usuario_registro
       }
     })
   }

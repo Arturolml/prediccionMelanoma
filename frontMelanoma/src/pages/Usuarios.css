@@ -1,0 +1,97 @@
+.role-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.role-admin {
+    background: rgba(139, 92, 246, 0.15);
+    color: #c084fc;
+    border: 1px solid rgba(139, 92, 246, 0.3);
+}
+
+.role-medico {
+    background: rgba(59, 130, 246, 0.15);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.role-enfermero {
+    background: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.inactive-row {
+    opacity: 0.6;
+    background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* Small toggle switch for table */
+.status-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toggle-switch-sm {
+    position: relative;
+    display: inline-block;
+    width: 36px;
+    height: 20px;
+}
+
+.toggle-switch-sm input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider-sm {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: .3s;
+    border-radius: 20px;
+}
+
+.slider-sm:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: var(--text-muted);
+    transition: .3s;
+    border-radius: 50%;
+}
+
+input:checked+.slider-sm {
+    background-color: var(--color-benigno);
+}
+
+input:checked+.slider-sm:before {
+    transform: translateX(16px);
+    background-color: white;
+}
+
+.text-success {
+    color: var(--color-benigno);
+}
+
+.text-danger {
+    color: var(--color-maligno);
+}
+
+.mt-1 {
+    margin-top: 4px;
+}

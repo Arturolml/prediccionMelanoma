@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, NotFoundException, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, NotFoundException, UseGuards, Req } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -13,7 +13,10 @@ export class PacientesController {
 
   @Post()
   @Roles('medico', 'enfermero')
-  create(@Body() createPacienteDto: CreatePacienteDto) {
+  create(@Req() req: any, @Body() createPacienteDto: CreatePacienteDto) {
+    if (req.user && req.user.userId) {
+      createPacienteDto.id_usuario_registro = +req.user.userId;
+    }
     return this.pacientesService.create(createPacienteDto);
   }
 

@@ -1,0 +1,133 @@
+.back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.back-link:hover {
+    color: var(--text-main);
+}
+
+.flex-col {
+    display: flex;
+    flex-direction: column;
+}
+
+.header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 350px 1fr;
+    gap: 32px;
+}
+
+.section-title {
+    font-size: 1.1rem;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--primary);
+}
+
+.info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.info-label {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.info-value {
+    font-weight: 500;
+    text-align: right;
+}
+
+.text-danger {
+    color: var(--color-maligno);
+}
+
+.text-success {
+    color: var(--color-benigno);
+}
+
+.text-capitalize {
+    text-transform: capitalize;
+}
+
+.mb-24 {
+    margin-bottom: 24px;
+}
+
+.mt-16 {
+    margin-top: 16px;
+}
+
+.pt-16 {
+    padding-top: 16px;
+}
+
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.border-top {
+    border-top: 1px solid var(--border-color);
+}
+
+.w-full {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+}
+
+.lesiones-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 24px;
+}
+
+.lesion-card {
+    padding: 20px;
+}
+
+.lesion-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.lesion-title h3 {
+    font-size: 1.2rem;
+    margin: 0;
+}
+
+.lesion-body {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.lesion-stat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}

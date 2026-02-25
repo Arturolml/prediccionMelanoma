@@ -144,7 +144,28 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
                         child: Column(
                           children: [
                             ExpansionTile(
-                              leading: const Icon(Icons.assignment),
+                              leading:
+                                  evaluacion['ruta_imagen'] != null &&
+                                      evaluacion['ruta_imagen']
+                                          .toString()
+                                          .isNotEmpty
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8.0),
+                                      child: Image.network(
+                                        '${ApiService.baseUrl}${evaluacion['ruta_imagen']}',
+                                        width: 50,
+                                        height: 50,
+                                        fit: BoxFit.cover,
+                                        errorBuilder:
+                                            (context, error, stackTrace) =>
+                                                const Icon(
+                                                  Icons.image_not_supported,
+                                                  size: 50,
+                                                  color: Colors.grey,
+                                                ),
+                                      ),
+                                    )
+                                  : const Icon(Icons.assignment, size: 40),
                               title: Text(fecha),
                               subtitle: Text(diagnostico),
                               children: [
@@ -176,7 +197,7 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
                                         child: ElevatedButton.icon(
                                           icon: const Icon(Icons.visibility),
                                           label: const Text(
-                                            'Ver Detalle Completo y Foto',
+                                            'Ver Detalle de Evaluación',
                                           ),
                                           onPressed: () {
                                             Navigator.push(

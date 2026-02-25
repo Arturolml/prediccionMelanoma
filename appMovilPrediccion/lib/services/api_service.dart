@@ -11,8 +11,10 @@ class ApiService {
 
   ApiService._internal();
 
-  static const String baseUrl = 'https://liaaproyectos.uaz.edu.mx';
+  //static const String baseUrl = 'https://liaaproyectos.uaz.edu.mx';
+  static const String baseUrl = 'http://192.168.100.20:3007';
   String? _token;
+  int? currentUserid;
 
   // --- Auth ---
 
@@ -27,6 +29,35 @@ class ApiService {
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
         _token = data['access_token'];
+
+        try {
+          final parts = _token!.split('.');
+          if (parts.length == 3) {
+            String payload = parts[1];
+            payload = payload.replaceAll('-', '+').replaceAll('_', '/');
+            switch (payload.length % 4) {
+              case 0:
+                break;
+              case 2:
+                payload += '==';
+                break;
+              case 3:
+                payload += '=';
+                break;
+              default:
+                throw Exception('Illegal base64url string!');
+            }
+            final decodedPayload = utf8.decode(base64Url.decode(payload));
+            final payloadMap = jsonDecode(decodedPayload);
+            currentUserid =
+                payloadMap['userId'] ??
+                payloadMap['id_usuario'] ??
+                payloadMap['sub'];
+          }
+        } catch (e) {
+          print('Error decoding token: $e');
+        }
+
         print('✅ Login exitoso. Token obtenido.');
         return true;
       } else {

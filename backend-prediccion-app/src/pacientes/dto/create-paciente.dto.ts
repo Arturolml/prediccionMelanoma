@@ -14,9 +14,10 @@ export class CreatePacienteDto {
     @IsString()
     apellido_paterno!: string
 
-    @ApiProperty({ example: 'Garcia' })
+    @ApiProperty({ example: 'Garcia', required: false })
+    @IsOptional()
     @IsString()
-    apellido_materno!: string
+    apellido_materno?: string
 
     @ApiProperty({ example: 'SEMAxxxx' })
     @IsString()
@@ -52,8 +53,8 @@ export class CreatePacienteDto {
     @IsOptional()
     inmunosuprimido?: boolean;
 
-
-
-
+    @ApiProperty({ example: 1, required: false })
+    @IsOptional()
+    id_usuario_registro?: number;
 
 }
