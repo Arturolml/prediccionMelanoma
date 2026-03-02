@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -16,6 +16,30 @@ export class EvaluacionesController {
     private readonly evaluacionesService: EvaluacionesService,
     private readonly pacientesService: PacientesService
   ) { }
+
+  @Post('predict-live')
+  @Roles('medico', 'enfermero')
+  @UseInterceptors(FileInterceptor('imagen', {
+    storage: diskStorage({
+      destination: './uploads/temp',
+      filename: (req, file, cb) => {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = extname(file.originalname);
+        cb(null, `live-${uniqueSuffix}${ext}`);
+      }
+    })
+  }))
+  async predictLive(
+    @UploadedFile() file: Express.Multer.File
+  ) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó una imagen para analizar.');
+    }
+
+    // Call the service to process the temporary file with the AI
+    const result = await this.evaluacionesService.predictImageLive(file.path);
+    return result;
+  }
 
   @Post()
   @Roles('medico', 'enfermero')

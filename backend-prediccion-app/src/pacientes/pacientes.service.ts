@@ -27,8 +27,17 @@ export class PacientesService {
     })
   }
 
-  async findAll() {
+  async findAll(user?: any) {
+    let whereClause: any = {};
+
+    // Si el usuario es médico, solo debe ver los pacientes que él mismo registró
+    if (user && user.rol === 'medico') {
+      whereClause.id_usuario_registro = user.userId;
+    }
+    // (Si es admin, no entra al IF y por tanto ve todos)
+
     return this.prisma.pacientes.findMany({
+      where: whereClause,
       orderBy: {
         apellido_paterno: 'asc'
       }

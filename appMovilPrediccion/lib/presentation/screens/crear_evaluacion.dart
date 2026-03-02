@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'package:flutter_app_1/services/api_service.dart';
 
@@ -47,8 +49,37 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
   // Medical
   bool _requiereBiopsia = false;
 
+  bool _isLoadingIA = false;
+  bool _isOffline = false;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialConnectivity();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      if (mounted) {
+        setState(() {
+          _isOffline = !results.contains(ConnectivityResult.wifi);
+        });
+      }
+    });
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    if (mounted) {
+      setState(() {
+        _isOffline = !results.contains(ConnectivityResult.wifi);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _connectivitySubscription.cancel();
     _prediccionIaController.dispose();
     _diametroController.dispose();
     // _diagnosticoMedicoController.dispose();
@@ -69,6 +100,72 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     setState(() {
       _storedImage = File(image.path);
     });
+  }
+
+  Future<void> _runPredictLive() async {
+    if (_storedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tome una foto primero para analizar con IA'),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isLoadingIA = true;
+    });
+
+    final api = ApiService();
+    final result = await api.predictEvaluacionLive(_storedImage!);
+
+    setState(() {
+      _isLoadingIA = false;
+    });
+
+    if (!mounted) return;
+
+    if (result != null && result['success'] == true) {
+      final data = result['data'];
+
+      setState(() {
+        if (data['prediccion_ia'] != null) {
+          _prediccionIaController.text = data['prediccion_ia'].toString();
+        }
+        if (data['diametro_mm'] != null) {
+          _diametroController.text = data['diametro_mm'].toString();
+        }
+        if (data['asimetria'] != null) _asimetria = data['asimetria'];
+        if (data['bordes_irregulares'] != null)
+          _bordesIrregulares = data['bordes_irregulares'];
+        if (data['color_variable'] != null)
+          _colorVariable = data['color_variable'];
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Análisis IA completado exitosamente.')),
+      );
+
+      if (result['explanation'] != null) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Explicación IA'),
+            content: SingleChildScrollView(child: Text(result['explanation'])),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error al procesar la imagen con IA.')),
+      );
+    }
   }
 
   void _submit() async {
@@ -136,7 +233,13 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Evaluación guardada exitosamente')),
+          SnackBar(
+            content: Text(
+              _isOffline
+                  ? 'Guardado localmente. Se sincronizará al tener Wi-Fi.'
+                  : 'Evaluación guardada exitosamente',
+            ),
+          ),
         );
         Navigator.pop(context, newEvaluacion);
       } else {
@@ -158,6 +261,28 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_isOffline)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade400),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_off, color: Colors.orange.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sin Wi-Fi. La IA está desactivada para no gastar datos. Se guardará localmente.',
+                          style: TextStyle(color: Colors.orange.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               // Header Info
               const Text(
                 'Información General',
@@ -204,10 +329,32 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                       ),
               ),
               const SizedBox(height: 10),
-              ElevatedButton.icon(
-                onPressed: _takePicture,
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Tomar Foto'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: _takePicture,
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Tomar Foto'),
+                  ),
+                  if (_storedImage != null)
+                    ElevatedButton.icon(
+                      onPressed: _isLoadingIA ? null : _runPredictLive,
+                      icon: _isLoadingIA
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.saved_search, color: Colors.white),
+                      label: Text(
+                        _isLoadingIA ? 'Analizando...' : 'Analizar con IA',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.indigo,
+                      ),
+                    ),
+                ],
               ),
 
               const SizedBox(height: 16),

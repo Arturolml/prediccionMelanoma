@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # -------------------------
+  # BASE DE DATOS POSTGRESQL (OPCIONAL SI YA TIENES OTRA)
+  # -------------------------
+  db_postgres:
+    image: postgres:15-alpine
+    container_name: melanoma_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tu_usuario_prd
+      POSTGRES_PASSWORD: tu_password_secreto
+      POSTGRES_DB: chama_melanoma_db
+    ports:
+      - "5432:5432" # Para poder conectarte localmente con DBeaver/PgAdmin si lo requieres
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - melanoma_net
+
+  # -------------------------
+  # BACKEND PRINCIPAL (NESTJS)
+  # -------------------------
+  api_nest:
+    build:
+      context: ./backend-prediccion-app
+      dockerfile: Dockerfile
+    container_name: melanoma_backend
+    restart: unless-stopped
+    depends_on:
+      - db_postgres
+    environment:
+      # Debe coincidir con las credenciales de arriba y apuntar al nombre del contenedor (db_postgres)
+      DATABASE_URL: "postgresql://tu_usuario_prd:tu_password_secreto@db_postgres:5432/chama_melanoma_db?schema=public"
+      JWT_SECRET: "TU_SECRETO_SUPER_SEGURO_PARA_PRODUCCION"
+      PORT: 3007
+    ports:
+      - "3007:3007" # Expuesto al host para que tu Nginx Nativo lo alcance (ej. proxy_pass http://localhost:3007)
+    networks:
+      - melanoma_net
+
+  # -------------------------
+  # MICROSERVICIO IA (FASTAPI)
+  # -------------------------
+  api_ia:
+    build:
+      context: ./api-prediccion-ai
+      dockerfile: Dockerfile
+    container_name: melanoma_ia
+    restart: unless-stopped
+    ports:
+      - "8000:8000" # Expuesto al host para validaciones, o consumible en http://localhost:8000 por tu Nginx Nativo
+    volumes:
+      # Opcional: montar el modelo keras por fuera si planeas actualizarlo sin reconstruir imagen
+      - ./mejor_modelo_bi_resnet50.keras:/app/mejor_modelo_bi_resnet50.keras:ro
+    networks:
+      - melanoma_net
+
+  # -------------------------
+  # FRONTEND (REACT - SERVE)
+  # -------------------------
+  web_frontend:
+    build:
+      context: ./frontMelanoma
+      dockerfile: Dockerfile
+    container_name: melanoma_front
+    restart: unless-stopped
+    environment:
+      # IMPORTANTE: Cambialo a tu dominio real.
+      VITE_API_URL: "https://liaaproyectos.uaz.edu.mx/api"
+    ports:
+      - "8080:8080" # Tu nginx local debe apuntar 'proxy_pass http://localhost:8080' a este puerto
+    networks:
+      - melanoma_net
+
+volumes:
+  db_data:
+    # Persistencia real de la DB para que no se borren registros
+
+networks:
+  melanoma_net:
+    driver: bridge

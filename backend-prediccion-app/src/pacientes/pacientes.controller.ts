@@ -21,8 +21,8 @@ export class PacientesController {
   }
 
   @Get()
-  async findAll() {
-    return this.pacientesService.findAll();
+  async findAll(@Req() req: any) {
+    return this.pacientesService.findAll(req.user);
   }
 
   @Get(':id')

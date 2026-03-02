@@ -90,6 +90,23 @@ export const api = {
                 if (!res.ok) throw new Error('Error al crear la evaluación');
                 return res.json();
             });
+        },
+        predictLive: (formData) => {
+            const userInfoStr = localStorage.getItem('userInfo');
+            let token = null;
+            if (userInfoStr) {
+                try {
+                    token = JSON.parse(userInfoStr).token;
+                } catch (e) { }
+            }
+            return fetch(`${API_URL}/evaluaciones/predict-live`, {
+                method: 'POST',
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+                body: formData
+            }).then(res => {
+                if (!res.ok) throw new Error('Error al procesar la imagen con IA');
+                return res.json();
+            });
         }
     },
     pacientes: {

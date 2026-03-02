@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_app_1/presentation/screens/pacientes.dart';
 import 'package:flutter_app_1/presentation/screens/usuarios.dart';
 import 'package:flutter_app_1/services/api_service.dart';
@@ -16,8 +18,36 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
+  bool _isOffline = false;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialConnectivity();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      if (mounted) {
+        setState(() {
+          _isOffline = results.contains(ConnectivityResult.none);
+        });
+      }
+    });
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    if (mounted) {
+      setState(() {
+        _isOffline = results.contains(ConnectivityResult.none);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _connectivitySubscription.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -28,9 +58,13 @@ class _LoginScreenState extends State<LoginScreen> {
       final email = _emailController.text;
       final password = _passwordController.text;
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Iniciando sesión...')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _isOffline ? 'Intentando sesión sin red...' : 'Iniciando sesión...',
+          ),
+        ),
+      );
 
       final success = await ApiService().login(email, password);
 
@@ -81,10 +115,10 @@ class _LoginScreenState extends State<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Logo or App Name
-                const Icon(
-                  Icons.health_and_safety,
-                  size: 100,
-                  color: Colors.blueAccent,
+                Image.asset(
+                  'assets/images/logo.jpeg',
+                  height: 120,
+                  fit: BoxFit.contain,
                 ),
                 const SizedBox(height: 24),
                 const Text(
@@ -92,7 +126,30 @@ class _LoginScreenState extends State<LoginScreen> {
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 10),
+                if (_isOffline)
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade100,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.orange.shade400),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.wifi_off, color: Colors.orange.shade800),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Sin Conexión. Iniciando sesión con datos guardados de accesos anteriores.',
+                            style: TextStyle(color: Colors.orange.shade900),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 10),
 
                 // Email Field
                 TextFormField(
@@ -157,13 +214,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Helper text for demo purposes
-                const Text(
-                  'Demo Hint: Use "admin@..." for admin role, others for medico/enfermero.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey, fontSize: 12),
-                ),
               ],
             ),
           ),

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_app_1/presentation/screens/pacientes.dart'
     show PacientesScreen;
 import 'package:flutter_app_1/services/api_service.dart';
@@ -30,8 +32,36 @@ class _CrearPacienteState extends State<CrearPaciente> {
   bool _historialCancer = false;
   bool _inmunosupresion = false;
 
+  bool _isOffline = false;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkInitialConnectivity();
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      List<ConnectivityResult> results,
+    ) {
+      if (mounted) {
+        setState(() {
+          _isOffline = results.contains(ConnectivityResult.none);
+        });
+      }
+    });
+  }
+
+  Future<void> _checkInitialConnectivity() async {
+    final results = await Connectivity().checkConnectivity();
+    if (mounted) {
+      setState(() {
+        _isOffline = results.contains(ConnectivityResult.none);
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _connectivitySubscription.cancel();
     _nombresController.dispose();
     _apellidoPaternoController.dispose();
     _apellidoMaternoController.dispose();
@@ -94,7 +124,13 @@ class _CrearPacienteState extends State<CrearPaciente> {
 
       if (success) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Paciente creado exitosamente')),
+          SnackBar(
+            content: Text(
+              _isOffline
+                  ? 'Paciente guardado localmente.'
+                  : 'Paciente creado exitosamente',
+            ),
+          ),
         );
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (context) => const PacientesScreen()),
@@ -121,6 +157,28 @@ class _CrearPacienteState extends State<CrearPaciente> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_isOffline)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade400),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.wifi_off, color: Colors.orange.shade800),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Sin Wi-Fi. El paciente se guardará localmente.',
+                          style: TextStyle(color: Colors.orange.shade900),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const Text(
                 'Datos del paciente',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),

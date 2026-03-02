@@ -5,11 +5,65 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { HttpService } from '@nestjs/axios';
+import FormData from 'form-data';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class EvaluacionesService {
 
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService, private httpService: HttpService) { }
+
+  async predictImageLive(imagePath: string) {
+    try {
+      const formData = new FormData();
+      formData.append('image', fs.createReadStream(imagePath));
+
+      const response = await firstValueFrom(
+        this.httpService.post('http://localhost:8000/api/v1/predict', formData, {
+          headers: formData.getHeaders(),
+          timeout: 15000, // 15s límite para que responda la IA
+        })
+      );
+
+      const iaResult = response.data;
+
+      const payload: Partial<CreateEvaluacioneDto> = {};
+
+      if (iaResult.p_malignant !== undefined) {
+        payload.prediccion_ia = Number((iaResult.p_malignant * 100).toFixed(2));
+      }
+
+      if (iaResult.morphology_metrics && !iaResult.morphology_metrics.error) {
+        const mm = iaResult.morphology_metrics;
+        payload.diametro_mm = Number((mm.diameter_equivalent_px * 0.1).toFixed(1));
+        payload.asimetria = (mm.asymmetry_horizontal > 0.5 || mm.asymmetry_vertical > 0.5);
+        payload.bordes_irregulares = (mm.border_irregularity_index > 1.5);
+        if (mm.color_std_rgb_mean && mm.color_std_rgb_mean > 40) {
+          payload.color_variable = true;
+        }
+      }
+
+      // Cleanup temp live file after parsing
+      if (fs.existsSync(imagePath)) {
+        try { fs.unlinkSync(imagePath); } catch (e) { }
+      }
+
+      return {
+        success: true,
+        data: payload,
+        explanation: iaResult.text_explanation || null
+      };
+
+    } catch (error: any) {
+      // Cleanup temp live file
+      if (fs.existsSync(imagePath)) {
+        try { fs.unlinkSync(imagePath); } catch (e) { }
+      }
+      console.error('Error al realizar predicción en vivo (FastAPI):', error.message);
+      throw new InternalServerErrorException('No se pudo analizar la imagen. Verifique que el servicio de IA esté encendido.');
+    }
+  }
 
 
   async create(createEvaluacioneDto: CreateEvaluacioneDto) {
@@ -65,6 +119,39 @@ export class EvaluacionesService {
         // ServeStatic: rootPath: ./uploads, serveRoot: /uploads
         // So URL should be /uploads/CURP/filename
         finalPath = `/uploads/${safeCurp}/${newFilename}`;
+
+        // Llamada al microservicio de IA (FastAPI) para inferencia
+        try {
+          const formData = new FormData();
+          formData.append('image', fs.createReadStream(newPath));
+
+          const response = await firstValueFrom(
+            this.httpService.post('http://localhost:8000/api/v1/predict', formData, {
+              headers: formData.getHeaders(),
+              timeout: 10000, // 10s límite
+            })
+          );
+
+          const iaResult = response.data;
+          // Guardar probabilidad (la API devuelve 0.0 a 1.0, lo mapeamos a porcentaje 0 a 100)
+          if (iaResult.p_malignant !== undefined) {
+            dto.prediccion_ia = Number((iaResult.p_malignant * 100).toFixed(2));
+          }
+
+          // Mapear métricas morfológicas (ABCDE) calculadas con CV
+          if (iaResult.morphology_metrics && !iaResult.morphology_metrics.error) {
+            const mm = iaResult.morphology_metrics;
+            dto.diametro_mm = Number((mm.diameter_equivalent_px * 0.1).toFixed(1));
+            dto.asimetria = (mm.asymmetry_horizontal > 0.5 || mm.asymmetry_vertical > 0.5);
+            dto.bordes_irregulares = (mm.border_irregularity_index > 1.5);
+            if (mm.color_std_rgb_mean && mm.color_std_rgb_mean > 40) {
+              dto.color_variable = true;
+            }
+          }
+        } catch (err: any) {
+          console.error('Error al consultar el microservicio de IA (FastAPI):', err.message);
+          // Si falla la IA, no bloqueamos la creación de la evaluación (continuamos)
+        }
       }
 
       // 3. Save to DB

@@ -39,6 +39,8 @@ const CrearEvaluacion = () => {
     const [error, setError] = useState('');
     const [selectedFile, setSelectedFile] = useState(null);
     const [isWaitingMobilePhoto, setIsWaitingMobilePhoto] = useState(false);
+    const [isLoadingIA, setIsLoadingIA] = useState(false);
+    const [explanationIA, setExplanationIA] = useState(null);
     const socketRef = useRef(null);
 
     useEffect(() => {
@@ -102,6 +104,48 @@ const CrearEvaluacion = () => {
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             setSelectedFile(e.target.files[0]);
+        }
+    };
+
+    const handlePredictLive = async () => {
+        if (!selectedFile) {
+            setError('Primero selecciona o toma una foto para analizarla con IA.');
+            return;
+        }
+
+        setIsLoadingIA(true);
+        setError('');
+
+        try {
+            const data = new FormData();
+            data.append('imagen', selectedFile);
+
+            const result = await api.evaluaciones.predictLive(data);
+
+            if (result && result.success) {
+                const aiData = result.data;
+                setFormData(prev => ({
+                    ...prev,
+                    prediccion_ia: aiData.prediccion_ia || prev.prediccion_ia,
+                    diametro_mm: aiData.diametro_mm || prev.diametro_mm,
+                    asimetria: aiData.asimetria !== undefined ? aiData.asimetria : prev.asimetria,
+                    bordes_irregulares: aiData.bordes_irregulares !== undefined ? aiData.bordes_irregulares : prev.bordes_irregulares,
+                    color_variable: aiData.color_variable !== undefined ? aiData.color_variable : prev.color_variable,
+                }));
+
+                if (result.explanation) {
+                    setExplanationIA(result.explanation);
+                }
+
+                alert('Análisis de IA completado exitosamente.');
+            } else {
+                setError('La IA no devolvió un formato válido.');
+            }
+        } catch (err) {
+            console.error('Error al analizar con IA:', err);
+            setError(err.message || 'Error al conectar con la Inteligencia Artificial.');
+        } finally {
+            setIsLoadingIA(false);
         }
     };
 
@@ -261,11 +305,26 @@ const CrearEvaluacion = () => {
                                         style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
                                     />
                                     {selectedFile ? (
-                                        <p className="text-success mt-8 text-sm font-medium">✅ {selectedFile.name}</p>
+                                        <div className="flex-col items-center">
+                                            <p className="text-success mt-8 text-sm font-medium">✅ {selectedFile.name}</p>
+                                        </div>
                                     ) : (
                                         <button type="button" className="btn btn-glass btn-sm mt-16 mt-4">Seleccionar Archivo</button>
                                     )}
                                 </div>
+
+                                {selectedFile && (
+                                    <button
+                                        type="button"
+                                        onClick={handlePredictLive}
+                                        className="btn mt-16 w-full flex-center"
+                                        style={{ backgroundColor: '#4f46e5', color: 'white' }}
+                                        disabled={isLoadingIA}
+                                    >
+                                        <BrainCircuit size={18} className="mr-8" />
+                                        {isLoadingIA ? 'Analizando imagen...' : 'Analizar Imagen con IA'}
+                                    </button>
+                                )}
                             </div>
 
                             <div className="form-section">
@@ -324,6 +383,19 @@ const CrearEvaluacion = () => {
                                             </label>
                                         </div>
                                     </div>
+                                </div>
+
+                                <div className="form-group mt-16">
+                                    <label className="form-label">Predicción IA (%)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        name="prediccion_ia"
+                                        value={formData.prediccion_ia || ''}
+                                        onChange={handleChange}
+                                        className="form-input"
+                                        placeholder="Valor sugerido por IA..."
+                                    />
                                 </div>
 
                                 <div className="form-group mt-16">
@@ -419,8 +491,40 @@ const CrearEvaluacion = () => {
                     </div>
                 </form>
             </div>
+
+            {explanationIA && (
+                <div style={modalOverlayStyle}>
+                    <div style={modalContentStyle}>
+                        <h3 style={{ marginTop: 0, color: '#4f46e5' }}><BrainCircuit className="inline-block mr-2" /> Explicación de la IA</h3>
+                        <p style={{ whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: '1.6' }}>{explanationIA}</p>
+                        <div style={{ marginTop: '20px', textAlign: 'right' }}>
+                            <button onClick={() => setExplanationIA(null)} className="btn btn-outline">Cerrar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
+};
+
+const modalOverlayStyle = {
+    position: 'fixed',
+    top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999
+};
+
+const modalContentStyle = {
+    backgroundColor: 'white',
+    padding: '24px',
+    borderRadius: '12px',
+    maxWidth: '500px',
+    width: '90%',
+    maxHeight: '80vh',
+    overflowY: 'auto'
 };
 
 export default CrearEvaluacion;
