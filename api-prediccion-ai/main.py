@@ -13,12 +13,13 @@ from interpretabilidad import SkinCancerInferenceService
 app = FastAPI(
     title="Melanoma IA API",
     description="API de explicabilidad e inferencia para detección de melanoma",
-    version="1.0.0"
+    version="1.0.0",
+    root_path="/apiiaprediccion"
 )
 
 # Global variables
 inference_service = None
-MODEL_FILENAME = "mejor_modelo_bi_resnet50.keras"
+MODEL_FILENAME = "/app/modelo_cnn__optimizado_280226_final.keras"
 
 @app.on_event("startup")
 async def startup_event():
@@ -57,8 +58,8 @@ async def predict_melanoma(image: UploadFile = File(...)):
         # Inference & Explainability
         result = inference_service.infer_and_explain(
             image_path=temp_image_path,
-            run_visual_xai=True,
-            run_morphology=True,
+            run_visual_xai=False,
+            run_morphology=False,
             save_artifacts_prefix=out_prefix
         )
         

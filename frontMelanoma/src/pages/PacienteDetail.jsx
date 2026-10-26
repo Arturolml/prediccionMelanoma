@@ -162,7 +162,7 @@ const PacienteDetail = () => {
                                         <div className="lesion-title flex items-center">
                                             {evaluacion.ruta_imagen ? (
                                                 <img
-                                                    src={`http://localhost:3007${evaluacion.ruta_imagen}`}
+                                                    src={`https://liaaproyectos.uaz.edu.mx${evaluacion.ruta_imagen}`}
                                                     alt="Evidencia"
                                                     className="w-12 h-12 object-cover rounded mr-12"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', marginRight: '12px' }}

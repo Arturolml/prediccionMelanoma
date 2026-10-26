@@ -46,7 +46,7 @@ const CrearEvaluacion = () => {
     useEffect(() => {
         if (!currentUser?.id_usuario) return;
 
-        socketRef.current = io('http://localhost:3007');
+        socketRef.current = io('https://liaaproyectos.uaz.edu.mx',{path: '/apiprediccion/socket.io', transports: ['websocket','polling']});
 
         socketRef.current.on('connect', () => {
             socketRef.current.emit('join_room', { userId: currentUser.id_usuario });
@@ -496,7 +496,7 @@ const CrearEvaluacion = () => {
                 <div style={modalOverlayStyle}>
                     <div style={modalContentStyle}>
                         <h3 style={{ marginTop: 0, color: '#4f46e5' }}><BrainCircuit className="inline-block mr-2" /> Explicación de la IA</h3>
-                        <p style={{ whiteSpace: 'pre-wrap', fontSize: '14px', lineHeight: '1.6' }}>{explanationIA}</p>
+                        <p style={{ whiteSpace: 'pre-wrap', color: 'black', fontSize: '14px', lineHeight: '1.6' }}>{explanationIA}</p>
                         <div style={{ marginTop: '20px', textAlign: 'right' }}>
                             <button onClick={() => setExplanationIA(null)} className="btn btn-outline">Cerrar</button>
                         </div>

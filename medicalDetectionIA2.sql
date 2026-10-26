@@ -56,7 +56,8 @@ CREATE TABLE pacientes (
     historial_cancer_previo BOOLEAN DEFAULT FALSE, -- Alerta crítica: El paciente YA tuvo cáncer
     inmunosuprimido BOOLEAN DEFAULT FALSE,
 
-    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    fecha_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    id_usuario_registro INT REFERENCES usuarios_sistema(id_usuario)
 );
 
 -- 5. TABLA: LESIONES (Mapa del Cuerpo)

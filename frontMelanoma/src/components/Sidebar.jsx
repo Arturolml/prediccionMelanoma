@@ -9,7 +9,7 @@ const Sidebar = () => {
     return (
         <aside className="sidebar glass">
             <div className="sidebar-header" style={{ padding: '20px 0', display: 'flex', justifyContent: 'center' }}>
-                <img src="/logo.jpeg" alt="OncoScan Logo" style={{ maxWidth: '80%', maxHeight: '100px', objectFit: 'contain', borderRadius: '8px' }} />
+                <img src={`${import.meta.env.BASE_URL}logo.jpeg`} alt="OncoScan Logo" style={{ maxWidth: '80%', maxHeight: '100px', objectFit: 'contain', borderRadius: '8px' }} />
             </div>
 
             <nav className="sidebar-nav">
@@ -26,17 +26,17 @@ const Sidebar = () => {
                     </>
                 )}
 
-                {isMedico && (
-                    <NavLink to="/crear-paciente" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
-                        <UserPlus size={20} />
-                        <span>Nuevo Paciente</span>
-                    </NavLink>
-                )}
-
                 {!isAdmin && (
                     <NavLink to="/pacientes" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
                         <Users size={20} />
                         <span>Lista Pacientes</span>
+                    </NavLink>
+                )}
+
+                {isMedico && (
+                    <NavLink to="/crear-paciente" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                        <UserPlus size={20} />
+                        <span>Nuevo Paciente</span>
                     </NavLink>
                 )}
             </nav>

@@ -18,8 +18,11 @@ COPY . .
 # simplemente generara el build en un volumen compartido o puedes usar un servidor Node estatico ligero.
 # Una solucion elegante es usar `serve` para servir la carpeta dist en el puerto 8080:
 
-RUN npm run build
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
 RUN npm install -g serve
+RUN npm run build
 
 EXPOSE 8080
 

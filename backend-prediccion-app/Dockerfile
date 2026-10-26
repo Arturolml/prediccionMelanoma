@@ -1,8 +1,11 @@
-FROM node:20-alpine AS builder
+FROM node:20-slim AS builder
+
+RUN apt-get update -y && apt-get install -y openssl
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
+COPY prisma ./prisma
 RUN npm install
 
 COPY . .
@@ -14,20 +17,20 @@ RUN npm run build
 # ---
 # Produccion
 # ---
-FROM node:20-alpine
+FROM node:20-slim
+
+RUN apt-get update -y && apt-get install -y openssl
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm install --only=production
 
-# Copiar build temporal
+# Copiar build temporal y node_modules generados
 COPY --from=builder /usr/src/app/dist ./dist
-# Prisma SDK y Client son necesarios en runtime
+COPY --from=builder /usr/src/app/node_modules ./node_modules
 COPY --from=builder /usr/src/app/prisma ./prisma
-COPY --from=builder /usr/src/app/node_modules/@prisma ./node_modules/@prisma
 
 EXPOSE 3007
 
 # El script start:prod suele referenciar dist/main
-CMD ["npm", "run", "start:prod"]
+CMD ["node", "dist/main.js"]

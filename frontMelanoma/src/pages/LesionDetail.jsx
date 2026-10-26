@@ -220,7 +220,7 @@ const LesionDetail = () => {
                                     </div>
 
                                     <div className="eval-image">
-                                        <div className="image-placeholder glass" style={{ background: ev.ruta_imagen ? `url('http://localhost:3007/${ev.ruta_imagen.replace('\\', '/')}')` : 'rgba(0,0,0,0.3)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.8 }}>
+                                        <div className="image-placeholder glass" style={{ background: ev.ruta_imagen ? `url('https://liaaproyectos.uaz.edu.mx/apiprediccion${ev.ruta_imagen.replace('\\', '/')}')` : 'rgba(0,0,0,0.3)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.8 }}>
                                             {!ev.ruta_imagen && <span className="text-xs text-muted flex-center h-full w-full">Sin Imagen</span>}
                                         </div>
                                         <div className="text-center mt-2">

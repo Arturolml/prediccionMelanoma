@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { UserCheck, Stethoscope, ShieldPlus, UserPlus, Save } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { UserCheck, Stethoscope, ShieldPlus, UserPlus, Save, Activity } from 'lucide-react';
+import { api } from '../services/api';
 import './CrearUsuario.css';
 
 const CrearUsuario = () => {
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         nombre_completo: '',
         email: '',
@@ -13,6 +16,9 @@ const CrearUsuario = () => {
         telefono_contacto: '',
         activo: true
     });
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
@@ -22,27 +28,52 @@ const CrearUsuario = () => {
         }));
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setSuccess('');
+
         if (formData.password !== formData.confirmPassword) {
-            alert("Las contraseñas no coinciden");
+            setError("Las contraseñas no coinciden");
             return;
         }
-        // Lógica para enviar al API falsa o real
-        console.log("Creando usuario:", formData);
-        alert('Usuario creado correctamente');
 
-        // Reset form
-        setFormData({
-            nombre_completo: '',
-            email: '',
-            password: '',
-            confirmPassword: '',
-            rol: 'medico',
-            cedula_profesional: '',
-            telefono_contacto: '',
-            activo: true
-        });
+        setIsLoading(true);
+        try {
+            await api.usuarios.create({
+                nombre_completo: formData.nombre_completo,
+                email: formData.email,
+                password: formData.password,
+                rol: formData.rol,
+                cedula_profesional: formData.cedula_profesional,
+                telefono_contacto: formData.telefono_contacto,
+                activo: formData.activo
+            });
+            
+            setSuccess('Usuario creado correctamente');
+
+            // Reset form
+            setFormData({
+                nombre_completo: '',
+                email: '',
+                password: '',
+                confirmPassword: '',
+                rol: 'medico',
+                cedula_profesional: '',
+                telefono_contacto: '',
+                activo: true
+            });
+            
+            setTimeout(() => {
+                setSuccess('');
+                navigate('/usuarios');
+            }, 1500);
+        } catch (err) {
+            console.error("Error creating user:", err);
+            setError(err.message || 'Error al intentar crear el usuario');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -55,6 +86,9 @@ const CrearUsuario = () => {
             </div>
 
             <div className="glass-card form-container">
+                {error && <div className="error-banner mb-4 p-4 text-center rounded text-danger bg-danger/10">{error}</div>}
+                {success && <div className="success-banner mb-4 p-4 text-center rounded text-success bg-success/10" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '1rem', borderRadius: '0.5rem', marginBottom: '1rem' }}>{success}</div>}
+
                 <form onSubmit={handleSubmit} className="usuario-form">
 
                     <div className="form-section">
@@ -190,9 +224,9 @@ const CrearUsuario = () => {
                     </div>
 
                     <div className="form-actions border-top">
-                        <button type="submit" className="btn btn-primary lg-btn">
-                            <Save size={20} />
-                            <span>Guardar Usuario</span>
+                        <button type="submit" className="btn btn-primary lg-btn" disabled={isLoading}>
+                            {isLoading ? <Activity className="spin" size={20} /> : <Save size={20} />}
+                            <span>{isLoading ? 'Guardando...' : 'Guardar Usuario'}</span>
                         </button>
                     </div>
 

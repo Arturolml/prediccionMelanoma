@@ -18,9 +18,9 @@ export class EvaluacionesService {
     try {
       const formData = new FormData();
       formData.append('image', fs.createReadStream(imagePath));
-
+      const iaUrl = process.env.IA_API_URL || 'https://liaaproyectos.uaz.edu.mx/apiiaprediccion';
       const response = await firstValueFrom(
-        this.httpService.post('http://localhost:8000/api/v1/predict', formData, {
+        this.httpService.post(`${iaUrl}/api/v1/predict`, formData, {
           headers: formData.getHeaders(),
           timeout: 15000, // 15s límite para que responda la IA
         })
@@ -124,9 +124,9 @@ export class EvaluacionesService {
         try {
           const formData = new FormData();
           formData.append('image', fs.createReadStream(newPath));
-
+          const iaUrl = process.env.IA_API_URL || 'https://liaaproyectos.uaz.edu.mx/apiiaprediccion';
           const response = await firstValueFrom(
-            this.httpService.post('http://localhost:8000/api/v1/predict', formData, {
+            this.httpService.post(`${iaUrl}/api/v1/predict`, formData, {
               headers: formData.getHeaders(),
               timeout: 10000, // 10s límite
             })

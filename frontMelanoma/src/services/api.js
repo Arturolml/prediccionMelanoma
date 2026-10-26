@@ -1,4 +1,4 @@
-const API_URL = 'http://localhost:3007';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3007';
 
 // Función auxiliar para realizar peticiones HTTP
 const fetchWithAuth = async (endpoint, options = {}) => {
@@ -128,6 +128,10 @@ export const api = {
     },
     usuarios: {
         getAll: () => fetchWithAuth('/usuarios'),
+        create: (data) => fetchWithAuth('/usuarios', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        }),
         toggleStatus: (id, activo) => fetchWithAuth(`/usuarios/${id}/status`, {
             method: 'PATCH',
             body: JSON.stringify({ activo })

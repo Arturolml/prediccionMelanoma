@@ -35,7 +35,7 @@ const Login = () => {
         <div className="login-page">
             <div className="login-container glass-card">
                 <div className="login-header" style={{ display: 'flex', justifyContent: 'center', marginBottom: '1.5rem' }}>
-                    <img src="/logo.jpeg" alt="OncoScan Logo" style={{ maxWidth: '200px', maxHeight: '120px', objectFit: 'contain', borderRadius: '12px' }} />
+                    <img src={`${import.meta.env.BASE_URL}logo.jpeg`} alt="OncoScan Logo" style={{ maxWidth: '200px', maxHeight: '100px', objectFit: 'contain', borderRadius: '12px' }} />
                 </div>
 
                 {error && <div className="error-banner">{error}</div>}

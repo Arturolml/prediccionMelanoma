@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import CrearUsuario from './pages/CrearUsuario';
@@ -13,21 +13,21 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import './App.css';
 
 const AppContent = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
 
   if (!currentUser) {
     return <Login />;
   }
 
   return (
-    <Router>
+    <Router basename={import.meta.env.BASE_URL}>
       <div className="app-layout">
         <Sidebar />
         <div className="main-content">
           <Topbar />
           <div className="page-content" style={{ marginTop: '24px' }}>
             <Routes>
-              <Route path="/" element={<CrearUsuario />} />
+              <Route path="/" element={isAdmin ? <CrearUsuario /> : <Navigate to="/pacientes" replace />} />
               <Route path="/crear-paciente" element={<CrearPaciente />} />
               <Route path="/pacientes" element={<Pacientes />} />
               <Route path="/pacientes/:id" element={<PacienteDetail />} />
