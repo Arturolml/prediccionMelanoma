@@ -10,8 +10,9 @@ class DetalleEvaluacionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Construct full image URL
     final String? rutaImagen = evaluacion['ruta_imagen'];
-    final String imageUrl = rutaImagen != null
-        ? '${ApiService.baseUrl}$rutaImagen'
+    final String imageUrl =
+        rutaImagen != null && evaluacion['id_evaluacion'] != null
+        ? ApiService.urlImagenEvaluacion(evaluacion['id_evaluacion'])
         : '';
 
     return Scaffold(
@@ -24,6 +25,7 @@ class DetalleEvaluacionScreen extends StatelessWidget {
               InteractiveViewer(
                 child: Image.network(
                   imageUrl,
+                  headers: ApiService().imagenHeaders,
                   height: 300,
                   fit: BoxFit.contain,
                   loadingBuilder: (context, child, loadingProgress) {

@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException, NotFoundException, Res } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import type { Response } from 'express';
+import { opcionesSubidaImagen, resolverRutaGuardada } from '../archivos/archivos';
 import { EvaluacionesService } from './evaluaciones.service';
 import { PacientesService } from '../pacientes/pacientes.service';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
@@ -19,16 +19,7 @@ export class EvaluacionesController {
 
   @Post('predict-live')
   @Roles('medico', 'enfermero')
-  @UseInterceptors(FileInterceptor('imagen', {
-    storage: diskStorage({
-      destination: './uploads/temp',
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = extname(file.originalname);
-        cb(null, `live-${uniqueSuffix}${ext}`);
-      }
-    })
-  }))
+  @UseInterceptors(FileInterceptor('imagen', opcionesSubidaImagen('temp')))
   async predictLive(
     @UploadedFile() file: Express.Multer.File
   ) {
@@ -43,24 +34,8 @@ export class EvaluacionesController {
 
   @Post()
   @Roles('medico', 'enfermero')
-  @UseInterceptors(FileInterceptor('imagen', {
-    storage: diskStorage({
-      destination: async (req, file, cb) => {
-        // Mock logic - we need to query DB to get CURP, but multer runs before handler.
-        // Strategy: Save to temp, then move? Or just use ID?
-        // Better: Use a custom storage engine or just save to 'uploads' globally and simpler logic?
-        // Requirement: "carpeta con la curp". 
-        // Problem: We don't have the patient CURP easily available in multer config sync.
-        // Solution: Save to './uploads/temp', then in the handler move it.
-        cb(null, './uploads');
-      },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = extname(file.originalname);
-        cb(null, `temp-${uniqueSuffix}${ext}`);
-      }
-    })
-  }))
+  // Se guarda primero en uploads/temp; el servicio la mueve a la carpeta del paciente.
+  @UseInterceptors(FileInterceptor('imagen', opcionesSubidaImagen('temp')))
   async create(
     @Body() createEvaluacioneDto: any, // Use any because multipart/form-data sends strings
     @UploadedFile() file: Express.Multer.File
@@ -134,6 +109,16 @@ export class EvaluacionesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.evaluacionesService.findOne(+id);
+  }
+
+  /** Foto de la evaluación (antes se servía pública en /uploads, con el CURP en la ruta). */
+  @Get(':id/imagen')
+  async imagen(@Param('id') id: string, @Res() res: Response) {
+    const evaluacion = await this.evaluacionesService.findOne(+id);
+    const ruta = resolverRutaGuardada(evaluacion.ruta_imagen);
+    if (!ruta) throw new NotFoundException('La evaluación no tiene imagen disponible');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.sendFile(ruta);
   }
 }
 

@@ -13,7 +13,7 @@ export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) { }
 
   @Post()
-  // @Roles('admin')
+  @Roles('admin')
   create(@Body() dto: CreateUsuarioDto) {
     return this.usuariosService.create(dto);
   }

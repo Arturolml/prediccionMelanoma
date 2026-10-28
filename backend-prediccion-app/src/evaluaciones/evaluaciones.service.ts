@@ -8,6 +8,7 @@ import * as path from 'path';
 import { HttpService } from '@nestjs/axios';
 import FormData from 'form-data';
 import { firstValueFrom } from 'rxjs';
+import { carpetaPaciente, rutaPublica } from '../archivos/archivos';
 
 @Injectable()
 export class EvaluacionesService {
@@ -100,25 +101,12 @@ export class EvaluacionesService {
       let finalPath = dto.ruta_imagen; // If no file, keep original (maybe URL)
 
       if (file) {
-        const curp = paciente.curp;
-        // Sanitized CURP for folder name
-        const safeCurp = curp.replace(/[^a-zA-Z0-9]/g, '');
-
-        const uploadDir = `./uploads/${safeCurp}`;
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
-
-        const newFilename = `${Date.now()}-${file.originalname}`;
-        const newPath = path.join(uploadDir, newFilename);
-
-        // Move file
+        // Carpeta por id de paciente (antes por CURP) y nombre aleatorio que
+        // asigna multer (antes se usaba el nombre que mandaba el cliente, que
+        // podia contener ../ y escribir fuera de uploads).
+        const newPath = path.join(carpetaPaciente(paciente.id_paciente), file.filename);
         fs.renameSync(file.path, newPath);
-
-        // Store relative path for URL access (assuming static serve points to ./uploads)
-        // ServeStatic: rootPath: ./uploads, serveRoot: /uploads
-        // So URL should be /uploads/CURP/filename
-        finalPath = `/uploads/${safeCurp}/${newFilename}`;
+        finalPath = rutaPublica(newPath);
 
         // Llamada al microservicio de IA (FastAPI) para inferencia
         try {

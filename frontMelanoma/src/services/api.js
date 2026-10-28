@@ -1,18 +1,18 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3007';
+
+// Token del usuario en sesión (guardado por AuthContext en localStorage).
+export const getToken = () => {
+    try {
+        return JSON.parse(localStorage.getItem('userInfo') || 'null')?.token || null;
+    } catch (e) {
+        console.error("Error parsing userInfo from localStorage", e);
+        return null;
+    }
+};
 
 // Función auxiliar para realizar peticiones HTTP
 const fetchWithAuth = async (endpoint, options = {}) => {
-    // Intentar obtener el token del userInfo almacenado en localStorage
-    const userInfoStr = localStorage.getItem('userInfo');
-    let token = null;
-    if (userInfoStr) {
-        try {
-            const userInfo = JSON.parse(userInfoStr);
-            token = userInfo.token;
-        } catch (e) {
-            console.error("Error parsing userInfo from localStorage", e);
-        }
-    }
+    const token = getToken();
 
     const headers = {
         'Content-Type': 'application/json',
@@ -75,13 +75,7 @@ export const api = {
             }
         },
         create: (formData) => {
-            const userInfoStr = localStorage.getItem('userInfo');
-            let token = null;
-            if (userInfoStr) {
-                try {
-                    token = JSON.parse(userInfoStr).token;
-                } catch (e) { }
-            }
+            const token = getToken();
             return fetch(`${API_URL}/evaluaciones`, {
                 method: 'POST',
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -92,13 +86,7 @@ export const api = {
             });
         },
         predictLive: (formData) => {
-            const userInfoStr = localStorage.getItem('userInfo');
-            let token = null;
-            if (userInfoStr) {
-                try {
-                    token = JSON.parse(userInfoStr).token;
-                } catch (e) { }
-            }
+            const token = getToken();
             return fetch(`${API_URL}/evaluaciones/predict-live`, {
                 method: 'POST',
                 headers: token ? { 'Authorization': `Bearer ${token}` } : {},
@@ -107,6 +95,15 @@ export const api = {
                 if (!res.ok) throw new Error('Error al procesar la imagen con IA');
                 return res.json();
             });
+        },
+        // Foto de la evaluación como blob (el endpoint exige sesión, así que
+        // no se puede poner la URL directa en un <img>).
+        getImagen: async (idEvaluacion) => {
+            const res = await fetch(`${API_URL}/evaluaciones/${idEvaluacion}/imagen`, {
+                headers: { 'Authorization': `Bearer ${getToken()}` }
+            });
+            if (!res.ok) throw new Error(`Imagen no disponible (${res.status})`);
+            return res.blob();
         }
     },
     pacientes: {
@@ -136,9 +133,11 @@ export const api = {
             method: 'PATCH',
             body: JSON.stringify({ activo })
         }),
-        updatePassword: (id, password_hash) => fetchWithAuth(`/usuarios/${id}`, {
+        // El backend calcula el hash: se manda la contraseña en `password`
+        // (antes se mandaba como password_hash y quedaba guardada en claro).
+        updatePassword: (id, password) => fetchWithAuth(`/usuarios/${id}`, {
             method: 'PATCH',
-            body: JSON.stringify({ password_hash })
+            body: JSON.stringify({ password })
         })
     },
     lesiones: {

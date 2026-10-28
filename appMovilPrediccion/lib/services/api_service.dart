@@ -108,6 +108,17 @@ class ApiService {
     }
   }
 
+  String? get token => _token;
+
+  /// La foto de una evaluación ya no se sirve en público (/uploads): se pide a
+  /// este endpoint con [imagenHeaders].
+  static String urlImagenEvaluacion(dynamic idEvaluacion) =>
+      '$baseUrl/evaluaciones/$idEvaluacion/imagen';
+
+  Map<String, String> get imagenHeaders => {
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
   Map<String, String> get _authHeaders {
     return {
       'Content-Type': 'application/json',

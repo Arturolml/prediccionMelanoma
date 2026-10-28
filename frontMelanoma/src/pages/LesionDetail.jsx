@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Calendar, FileImage, CheckCircle, AlertTriangle, ShieldAlert, Activity, ClipboardList } from 'lucide-react';
 import { api } from '../services/api';
+import ImagenProtegida from '../components/ImagenProtegida';
 import './LesionDetail.css';
 
 const DiagnosticBadge = ({ type }) => {
@@ -220,9 +221,13 @@ const LesionDetail = () => {
                                     </div>
 
                                     <div className="eval-image">
-                                        <div className="image-placeholder glass" style={{ background: ev.ruta_imagen ? `url('https://liaaproyectos.uaz.edu.mx/apiprediccion${ev.ruta_imagen.replace('\\', '/')}')` : 'rgba(0,0,0,0.3)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.8 }}>
-                                            {!ev.ruta_imagen && <span className="text-xs text-muted flex-center h-full w-full">Sin Imagen</span>}
-                                        </div>
+                                        {ev.ruta_imagen ? (
+                                            <ImagenProtegida comoFondo idEvaluacion={ev.id_evaluacion} className="image-placeholder glass" style={{ opacity: 0.8 }} />
+                                        ) : (
+                                            <div className="image-placeholder glass" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                                                <span className="text-xs text-muted flex-center h-full w-full">Sin Imagen</span>
+                                            </div>
+                                        )}
                                         <div className="text-center mt-2">
                                             <span className="text-xs text-muted">Imagen Clínica - {formatDate(ev.fecha_evaluacion).split(',')[0]}</span>
                                         </div>

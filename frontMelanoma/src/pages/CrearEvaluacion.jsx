@@ -2,9 +2,12 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Save, UploadCloud, BrainCircuit, Stethoscope, Microscope, Activity, Smartphone } from 'lucide-react';
 import { io } from 'socket.io-client';
-import { api } from '../services/api';
+import { api, getToken } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import './CrearEvaluacion.css';
+
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://liaaproyectos.uaz.edu.mx';
+const SOCKET_PATH = import.meta.env.VITE_SOCKET_PATH || '/apiprediccion/socket.io';
 
 const CrearEvaluacion = () => {
     const { id } = useParams(); // ID del paciente o de la lesión dependiendo del contexto
@@ -46,11 +49,9 @@ const CrearEvaluacion = () => {
     useEffect(() => {
         if (!currentUser?.id_usuario) return;
 
-        socketRef.current = io('https://liaaproyectos.uaz.edu.mx',{path: '/apiprediccion/socket.io', transports: ['websocket','polling']});
-
-        socketRef.current.on('connect', () => {
-            socketRef.current.emit('join_room', { userId: currentUser.id_usuario });
-        });
+        // El socket se autentica con el token de sesión; el backend lo une a la
+        // sala de este usuario (ya no se elige la sala con un userId).
+        socketRef.current = io(SOCKET_URL, { path: SOCKET_PATH, transports: ['websocket', 'polling'], auth: { token: getToken() } });
 
         socketRef.current.on('foto_recibida', (data) => {
             if (data && data.imageBase64) {
@@ -87,7 +88,7 @@ const CrearEvaluacion = () => {
     const requestMobileCamera = () => {
         if (socketRef.current) {
             setIsWaitingMobilePhoto(true);
-            socketRef.current.emit('solicitar_camara_movil', { userId: currentUser.id_usuario });
+            socketRef.current.emit('solicitar_camara_movil', {});
         } else {
             setError('Desconectado del servidor de tiempo real. Recarga la página.');
         }

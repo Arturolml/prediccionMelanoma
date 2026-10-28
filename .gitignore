@@ -2,3 +2,10 @@
 
 # Pesos de los modelos de IA (se copian al servidor, no van en git)
 artefactos_ia/
+
+# Secretos del despliegue (ver .env.example)
+.env
+__pycache__/
+*.pyc
+*.save
+*.save.*
