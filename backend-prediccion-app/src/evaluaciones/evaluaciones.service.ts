@@ -1,160 +1,154 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, HttpException, Logger } from '@nestjs/common';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
-import { UpdateEvaluacioneDto } from './dto/update-evaluacione.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
-import { HttpService } from '@nestjs/axios';
-import FormData from 'form-data';
-import { firstValueFrom } from 'rxjs';
-import { carpetaPaciente, rutaPublica } from '../archivos/archivos';
+import { borrarSiExiste, carpetaPaciente, resolverRutaGuardada, rutaPublica } from '../archivos/archivos';
+import { IaService, ResultadoIA } from '../ia/ia.service';
+import { VALORES_SITIO } from '../ia/sitios';
+
+/** Mapas de la IA guardados por evaluación (GET /evaluaciones/:id/mapa/:tipo). */
+export const TIPOS_MAPA = {
+  fusion: 'ruta_mapa_fusion',
+  qresnet: 'ruta_mapa_qresnet',
+  contorno: 'ruta_contorno_lesion',
+} as const;
+export type TipoMapa = keyof typeof TIPOS_MAPA;
+
+/** Contexto clínico para el análisis en vivo: la lesión (si ya existe) o el paciente. */
+export interface ContextoAnalisis {
+  id_lesion?: number;
+  id_paciente?: number;
+  sitio_anatomico?: string;
+}
 
 @Injectable()
 export class EvaluacionesService {
+  private readonly logger = new Logger(EvaluacionesService.name);
 
-  constructor(private prisma: PrismaService, private httpService: HttpService) { }
+  constructor(private prisma: PrismaService, private ia: IaService) { }
 
-  async predictImageLive(imagePath: string) {
-    try {
-      const formData = new FormData();
-      formData.append('image', fs.createReadStream(imagePath));
-      const iaUrl = process.env.IA_API_URL || 'https://liaaproyectos.uaz.edu.mx/apiiaprediccion';
-      const response = await firstValueFrom(
-        this.httpService.post(`${iaUrl}/api/v1/predict`, formData, {
-          headers: formData.getHeaders(),
-          timeout: 15000, // 15s límite para que responda la IA
-        })
-      );
-
-      const iaResult = response.data;
-
-      const payload: Partial<CreateEvaluacioneDto> = {};
-
-      if (iaResult.p_malignant !== undefined) {
-        payload.prediccion_ia = Number((iaResult.p_malignant * 100).toFixed(2));
-      }
-
-      if (iaResult.morphology_metrics && !iaResult.morphology_metrics.error) {
-        const mm = iaResult.morphology_metrics;
-        payload.diametro_mm = Number((mm.diameter_equivalent_px * 0.1).toFixed(1));
-        payload.asimetria = (mm.asymmetry_horizontal > 0.5 || mm.asymmetry_vertical > 0.5);
-        payload.bordes_irregulares = (mm.border_irregularity_index > 1.5);
-        if (mm.color_std_rgb_mean && mm.color_std_rgb_mean > 40) {
-          payload.color_variable = true;
-        }
-      }
-
-      // Cleanup temp live file after parsing
-      if (fs.existsSync(imagePath)) {
-        try { fs.unlinkSync(imagePath); } catch (e) { }
-      }
-
-      return {
-        success: true,
-        data: payload,
-        explanation: iaResult.text_explanation || null
-      };
-
-    } catch (error: any) {
-      // Cleanup temp live file
-      if (fs.existsSync(imagePath)) {
-        try { fs.unlinkSync(imagePath); } catch (e) { }
-      }
-      console.error('Error al realizar predicción en vivo (FastAPI):', error.message);
-      throw new InternalServerErrorException('No se pudo analizar la imagen. Verifique que el servicio de IA esté encendido.');
-    }
+  /** Foto de la evaluación más reciente de la lesión (para el criterio E de evolución). */
+  private async imagenPrevia(idLesion: number): Promise<string | null> {
+    const previa = await this.prisma.evaluaciones.findFirst({
+      where: { id_lesion: idLesion },
+      orderBy: { fecha_evaluacion: 'desc' },
+      select: { ruta_imagen: true },
+    });
+    return resolverRutaGuardada(previa?.ruta_imagen);
   }
 
-
-  async create(createEvaluacioneDto: CreateEvaluacioneDto) {
-    try {
-      return await this.prisma.evaluaciones.create({
-        data: {
-          ...createEvaluacioneDto,
-        } as Prisma.evaluacionesUncheckedCreateInput,
-      });
-    } catch (error) {
-      this.handleDBExceptions(error);
+  private validarSitio(sitio: string | undefined): string | undefined {
+    if (sitio && !(VALORES_SITIO as string[]).includes(sitio)) {
+      throw new BadRequestException(`sitio_anatomico debe ser uno de: ${VALORES_SITIO.join(', ')}`);
     }
+    return sitio;
+  }
 
+  /**
+   * Análisis en vivo (antes de guardar): la web y la app lo usan para mostrar el
+   * resultado y prellenar los criterios ABCDE. No se guarda nada; la foto
+   * temporal se borra.
+   */
+  async predictImageLive(imagePath: string, contexto: ContextoAnalisis) {
+    try {
+      let sitio = this.validarSitio(contexto.sitio_anatomico);
+      let paciente;
+      let rutaPrevia: string | null = null;
+      if (contexto.id_lesion) {
+        const lesion = await this.prisma.lesiones.findUnique({
+          where: { id_lesion: contexto.id_lesion },
+          include: { pacientes: true },
+        });
+        if (!lesion?.pacientes) throw new BadRequestException('La lesión especificada no existe.');
+        paciente = lesion.pacientes;
+        sitio = sitio ?? lesion.sitio_anatomico;
+        rutaPrevia = await this.imagenPrevia(lesion.id_lesion);
+      } else if (contexto.id_paciente) {
+        paciente = await this.prisma.pacientes.findUnique({ where: { id_paciente: contexto.id_paciente } });
+        if (!paciente) throw new BadRequestException('El paciente especificado no existe.');
+      } else {
+        throw new BadRequestException('Indique id_lesion o id_paciente para analizar la imagen.');
+      }
+
+      const resultado = await this.ia.analizar({
+        rutaImagen: imagePath,
+        paciente,
+        sitio: sitio ?? 'unknown',
+        rutaImagenPrevia: rutaPrevia,
+      });
+      return {
+        success: true,
+        // Valores para prellenar el formulario (el médico los confirma o corrige).
+        data: {
+          prediccion_ia: IaService.camposEvaluacion(resultado).prediccion_ia,
+          ...IaService.sugerenciasAbcde(resultado),
+        },
+        explanation: resultado.mensaje,
+        ia: resultado,
+      };
+    } finally {
+      borrarSiExiste(imagePath);
+    }
   }
 
   async createWithImage(dto: CreateEvaluacioneDto, file: Express.Multer.File | undefined) {
     try {
-      // 1. Check if lesion exists to get Patient info
       const lesion = await this.prisma.lesiones.findUnique({
         where: { id_lesion: dto.id_lesion },
         include: { pacientes: true }
       });
-
       if (!lesion) {
         throw new BadRequestException('La lesión especificada no existe.');
       }
-
       const paciente = lesion.pacientes;
       if (!paciente) {
         throw new BadRequestException('La lesión no tiene un paciente asociado válido.');
       }
 
-      // 2. Process File if exists
-      let finalPath = dto.ruta_imagen; // If no file, keep original (maybe URL)
+      // La probabilidad de la IA la calcula el backend; no se acepta del cliente.
+      delete dto.prediccion_ia;
+      let finalPath = dto.ruta_imagen;
+      let camposIA = {};
 
       if (file) {
         // Carpeta por id de paciente (antes por CURP) y nombre aleatorio que
         // asigna multer (antes se usaba el nombre que mandaba el cliente, que
         // podia contener ../ y escribir fuera de uploads).
+        const rutaPrevia = await this.imagenPrevia(lesion.id_lesion);
         const newPath = path.join(carpetaPaciente(paciente.id_paciente), file.filename);
         fs.renameSync(file.path, newPath);
         finalPath = rutaPublica(newPath);
 
-        // Llamada al microservicio de IA (FastAPI) para inferencia
+        // Si la IA falla, la evaluación se guarda igual, sin resultado de IA
+        // (decision_ia queda en null y la app lo indica).
         try {
-          const formData = new FormData();
-          formData.append('image', fs.createReadStream(newPath));
-          const iaUrl = process.env.IA_API_URL || 'https://liaaproyectos.uaz.edu.mx/apiiaprediccion';
-          const response = await firstValueFrom(
-            this.httpService.post(`${iaUrl}/api/v1/predict`, formData, {
-              headers: formData.getHeaders(),
-              timeout: 10000, // 10s límite
-            })
-          );
-
-          const iaResult = response.data;
-          // Guardar probabilidad (la API devuelve 0.0 a 1.0, lo mapeamos a porcentaje 0 a 100)
-          if (iaResult.p_malignant !== undefined) {
-            dto.prediccion_ia = Number((iaResult.p_malignant * 100).toFixed(2));
-          }
-
-          // Mapear métricas morfológicas (ABCDE) calculadas con CV
-          if (iaResult.morphology_metrics && !iaResult.morphology_metrics.error) {
-            const mm = iaResult.morphology_metrics;
-            dto.diametro_mm = Number((mm.diameter_equivalent_px * 0.1).toFixed(1));
-            dto.asimetria = (mm.asymmetry_horizontal > 0.5 || mm.asymmetry_vertical > 0.5);
-            dto.bordes_irregulares = (mm.border_irregularity_index > 1.5);
-            if (mm.color_std_rgb_mean && mm.color_std_rgb_mean > 40) {
-              dto.color_variable = true;
-            }
-          }
+          const resultado: ResultadoIA = await this.ia.analizar({
+            rutaImagen: newPath,
+            paciente,
+            sitio: lesion.sitio_anatomico,
+            fechaReferencia: dto.fecha_evaluacion ?? new Date(),
+            rutaImagenPrevia: rutaPrevia,
+          });
+          camposIA = { ...IaService.camposEvaluacion(resultado), ...IaService.guardarMapas(resultado, paciente.id_paciente) };
         } catch (err: any) {
-          console.error('Error al consultar el microservicio de IA (FastAPI):', err.message);
-          // Si falla la IA, no bloqueamos la creación de la evaluación (continuamos)
+          this.logger.error(`Evaluación guardada sin resultado de IA: ${err?.message}`);
         }
       }
 
-      // 3. Save to DB
+      // Los criterios ABCDE que se guardan son los que marca el médico (el
+      // formulario se prellena con la sugerencia de la IA del análisis en vivo).
       return await this.prisma.evaluaciones.create({
         data: {
           ...dto,
+          ...camposIA,
           ruta_imagen: finalPath,
         } as Prisma.evaluacionesUncheckedCreateInput,
       });
 
     } catch (error) {
-      // Cleanup temp file if error
-      if (file && fs.existsSync(file.path)) {
-        try { fs.unlinkSync(file.path); } catch (e) { }
-      }
+      if (file) borrarSiExiste(file.path);
       this.handleDBExceptions(error);
     }
   }
@@ -196,7 +190,14 @@ export class EvaluacionesService {
     return evaluacion;
   }
 
-  private handleDBExceptions(error: any) {
+  /** Ruta en disco de un mapa de la IA de la evaluación (o null si no existe). */
+  async rutaMapa(id: number, tipo: TipoMapa): Promise<string | null> {
+    const evaluacion = await this.findOne(id);
+    return resolverRutaGuardada(evaluacion[TIPOS_MAPA[tipo]]);
+  }
+
+  private handleDBExceptions(error: any): never {
+    if (error instanceof HttpException) throw error;
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2003') {
         throw new BadRequestException(
@@ -207,9 +208,12 @@ export class EvaluacionesService {
         throw new BadRequestException('Ya existe un registro con estos datos únicos.');
       }
     }
+    if (error instanceof Prisma.PrismaClientValidationError) {
+      throw new BadRequestException('Datos de la evaluación inválidos.');
+    }
 
-    console.error(error);
+    this.logger.error(error);
     throw new InternalServerErrorException('Error inesperado al procesar la evaluación');
   }
 
-} 
+}

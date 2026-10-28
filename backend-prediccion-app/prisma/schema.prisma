@@ -27,6 +27,15 @@ model evaluaciones {
   diagnostico_medico                                                  tipo_diagnostico?
   notas_medico                                                        String?
   requiere_biopsia                                                    Boolean?          @default(false)
+  // Resultado de la IA (Fase 14). prediccion_ia = probabilidad de Fusion (0-100).
+  prob_qresnet                                                        Decimal?          @db.Decimal(5, 2)
+  decision_ia                                                         String?           @db.VarChar(20)
+  ia_revisar_caso                                                     Boolean?
+  version_modelos_ia                                                  String?           @db.VarChar(40)
+  resultado_ia                                                        Json?
+  ruta_mapa_fusion                                                    String?           @db.VarChar(255)
+  ruta_mapa_qresnet                                                   String?           @db.VarChar(255)
+  ruta_contorno_lesion                                                String?           @db.VarChar(255)
   lesiones                                                            lesiones?         @relation(fields: [id_lesion], references: [id_lesion], onDelete: Cascade, onUpdate: NoAction)
   usuarios_sistema_evaluaciones_id_medico_validadorTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_medico_validadorTousuarios_sistema", fields: [id_medico_validador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
   usuarios_sistema_evaluaciones_id_usuario_registroTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_usuario_registroTousuarios_sistema", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
@@ -38,6 +47,8 @@ model lesiones {
   id_lesion       Int            @id @default(autoincrement())
   id_paciente     Int?
   zona_cuerpo     String         @db.VarChar(100)
+  // Uno de los 16 sitios con que se entreno el modelo de Fusion (src/ia/sitios.ts).
+  sitio_anatomico String         @default("unknown") @db.VarChar(30)
   fecha_deteccion DateTime?      @default(dbgenerated("CURRENT_DATE")) @db.Date
   notas_ubicacion String?
   evaluaciones    evaluaciones[]

@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 import { EvaluacionesService } from './evaluaciones.service';
 import { EvaluacionesController } from './evaluaciones.controller';
 import { PacientesModule } from 'src/pacientes/pacientes.module';
-import { HttpModule } from '@nestjs/axios';
+import { IaModule } from 'src/ia/ia.module';
 
 @Module({
-  imports: [PacientesModule, HttpModule],
+  imports: [PacientesModule, IaModule],
   controllers: [EvaluacionesController],
   providers: [EvaluacionesService],
 })

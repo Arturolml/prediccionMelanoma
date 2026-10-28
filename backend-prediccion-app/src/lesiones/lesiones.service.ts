@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateLesioneDto } from './dto/create-lesione.dto';
+import { UpdateLesioneDto } from './dto/update-lesione.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 
 @Injectable()
@@ -34,5 +35,20 @@ export class LesionesService {
     }
 
     return lesion;
+  }
+
+  async update(id: number, dto: UpdateLesioneDto) {
+    await this.findOne(id);
+    // Campos explícitos: el ValidationPipe global no descarta propiedades no
+    // declaradas, así que pasar el dto completo permitiría cambiar id_paciente.
+    return await this.prisma.lesiones.update({
+      where: { id_lesion: id },
+      data: {
+        zona_cuerpo: dto.zona_cuerpo,
+        sitio_anatomico: dto.sitio_anatomico,
+        fecha_deteccion: dto.fecha_deteccion,
+        notas_ubicacion: dto.notas_ubicacion,
+      },
+    });
   }
 }

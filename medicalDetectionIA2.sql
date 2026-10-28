@@ -65,6 +65,10 @@ CREATE TABLE lesiones (
     id_lesion INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     id_paciente INT REFERENCES pacientes(id_paciente) ON DELETE CASCADE,
     zona_cuerpo VARCHAR(100) NOT NULL, -- Ej: 'Espalda Baja', 'Rostro'
+    -- Sitio anatomico con los valores del modelo de Fusion (Fase 14)
+    sitio_anatomico VARCHAR(30) NOT NULL DEFAULT 'unknown' CHECK (sitio_anatomico IN (
+      'abdomen', 'acral', 'back', 'chest', 'ear', 'face', 'foot', 'genital', 'hand', 'head/neck',
+      'lower extremity', 'neck', 'scalp', 'trunk', 'unknown', 'upper extremity')),
     fecha_deteccion DATE DEFAULT CURRENT_DATE,
     notas_ubicacion TEXT -- Descripción extra: "Cerca del hombro derecho"
 );
@@ -99,7 +103,17 @@ CREATE TABLE evaluaciones (
     -- Resultado Final
     diagnostico_medico tipo_diagnostico,
     notas_medico TEXT,
-    requiere_biopsia BOOLEAN DEFAULT FALSE
+    requiere_biopsia BOOLEAN DEFAULT FALSE,
+
+    -- Resultado de la IA (Fase 14); prediccion_ia = probabilidad de Fusion
+    prob_qresnet NUMERIC(5, 2),
+    decision_ia VARCHAR(20),
+    ia_revisar_caso BOOLEAN,
+    version_modelos_ia VARCHAR(40),
+    resultado_ia JSONB,
+    ruta_mapa_fusion VARCHAR(255),
+    ruta_mapa_qresnet VARCHAR(255),
+    ruta_contorno_lesion VARCHAR(255)
 );
 
 -- 7. ÍNDICES DE RENDIMIENTO (Para búsquedas rápidas)
