@@ -171,18 +171,18 @@ const PacienteDetail = () => {
                                             ) : (
                                                 <Activity size={20} className="text-primary mr-12" style={{ marginRight: '12px' }} />
                                             )}
-                                            <h3>{evaluacion.diagnostico || 'Sin diagnóstico'}</h3>
+                                            <h3>{(evaluacion.diagnostico_medico || 'Sin diagnóstico').replace('_', ' / ')}</h3>
                                         </div>
                                     </div>
 
                                     <div className="lesion-body">
                                         <div className="lesion-stat mb-8">
                                             <Calendar size={16} className="text-muted mr-8" style={{ marginRight: '8px' }} />
-                                            <span className="text-sm">Fecha: {formatDate(evaluacion.fecha)}</span>
+                                            <span className="text-sm">Fecha: {formatDate(evaluacion.fecha_evaluacion)}</span>
                                         </div>
-                                        {evaluacion.observaciones && (
+                                        {evaluacion.notas_medico && (
                                             <p className="text-sm text-muted line-clamp-2">
-                                                {evaluacion.observaciones}
+                                                {evaluacion.notas_medico}
                                             </p>
                                         )}
                                     </div>

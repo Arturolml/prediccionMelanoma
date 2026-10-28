@@ -61,8 +61,8 @@ export const api = {
             try {
                 const evaluaciones = await fetchWithAuth('/evaluaciones');
                 const total = evaluaciones.length;
-                const malignos = evaluaciones.filter(e => e.diagnostico && e.diagnostico.toLowerCase().includes('maligno')).length;
-                const sospechosos = evaluaciones.filter(e => e.diagnostico && e.diagnostico.toLowerCase().includes('sospechoso')).length;
+                const malignos = evaluaciones.filter(e => e.diagnostico_medico && e.diagnostico_medico.toLowerCase().includes('maligno')).length;
+                const sospechosos = evaluaciones.filter(e => e.diagnostico_medico && e.diagnostico_medico.toLowerCase().includes('sospechoso')).length;
                 return {
                     totalEvaluaciones: total,
                     casosMalignos: malignos,
@@ -96,10 +96,10 @@ export const api = {
                 return res.json();
             });
         },
-        // Foto de la evaluación como blob (el endpoint exige sesión, así que
-        // no se puede poner la URL directa en un <img>).
-        getImagen: async (idEvaluacion) => {
-            const res = await fetch(`${API_URL}/evaluaciones/${idEvaluacion}/imagen`, {
+        // Foto de la evaluación y mapas de la IA como blob (los endpoints exigen
+        // sesión, así que no se puede poner la URL directa en un <img>).
+        getArchivo: async (ruta) => {
+            const res = await fetch(`${API_URL}${ruta}`, {
                 headers: { 'Authorization': `Bearer ${getToken()}` }
             });
             if (!res.ok) throw new Error(`Imagen no disponible (${res.status})`);
@@ -142,6 +142,10 @@ export const api = {
     },
     lesiones: {
         getById: (id) => fetchWithAuth(`/lesiones/${id}`),
+        update: (id, data) => fetchWithAuth(`/lesiones/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data)
+        }),
         create: (lesionData) => fetchWithAuth('/lesiones', {
             method: 'POST',
             body: JSON.stringify(lesionData)

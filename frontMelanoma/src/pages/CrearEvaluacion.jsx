@@ -4,6 +4,8 @@ import { ArrowLeft, MapPin, Calendar, Save, UploadCloud, BrainCircuit, Stethosco
 import { io } from 'socket.io-client';
 import { api, getToken } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import ResultadoIA from '../components/ResultadoIA';
+import { SITIOS_ANATOMICOS, etiquetaSitio } from '../constants/sitios';
 import './CrearEvaluacion.css';
 
 const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'https://liaaproyectos.uaz.edu.mx';
@@ -16,8 +18,9 @@ const CrearEvaluacion = () => {
     const isFromPaciente = location.pathname.includes('/pacientes/');
 
     const [formData, setFormData] = useState({
-        // Datos de Lesión
-        zona_cuerpo: '',
+        // Datos de Lesión. sitio_anatomico es uno de los 16 valores del modelo de
+        // Fusión; zona_cuerpo (texto en la base) se llena con su etiqueta.
+        sitio_anatomico: '',
         fecha_deteccion: new Date().toISOString().split('T')[0], // YYYY-MM-DD
         notas_ubicacion: '',
 
@@ -43,8 +46,21 @@ const CrearEvaluacion = () => {
     const [selectedFile, setSelectedFile] = useState(null);
     const [isWaitingMobilePhoto, setIsWaitingMobilePhoto] = useState(false);
     const [isLoadingIA, setIsLoadingIA] = useState(false);
-    const [explanationIA, setExplanationIA] = useState(null);
+    const [resultadoIA, setResultadoIA] = useState(null);
+    const [lesion, setLesion] = useState(null);
     const socketRef = useRef(null);
+
+    // Nueva evaluación de una lesión existente: se usa su sitio anatómico (las
+    // lesiones anteriores a la Fase 14 quedaron en 'unknown' y aquí se puede corregir).
+    useEffect(() => {
+        if (isFromPaciente) return;
+        api.lesiones.getById(id)
+            .then(l => {
+                setLesion(l);
+                setFormData(prev => ({ ...prev, sitio_anatomico: l.sitio_anatomico || 'unknown' }));
+            })
+            .catch(() => setError('No se pudo cargar la lesión.'));
+    }, [id, isFromPaciente]);
 
     useEffect(() => {
         if (!currentUser?.id_usuario) return;
@@ -70,6 +86,7 @@ const CrearEvaluacion = () => {
 
                     const file = new File([blob], `foto_movil_${Date.now()}.jpg`, { type: 'image/jpeg' });
                     setSelectedFile(file);
+                    setResultadoIA(null);
                     setIsWaitingMobilePhoto(false);
                     setError('');
                 } catch (err) {
@@ -96,6 +113,7 @@ const CrearEvaluacion = () => {
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
+        if (name === 'sitio_anatomico') setResultadoIA(null); // el análisis usó el sitio anterior
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
@@ -105,6 +123,7 @@ const CrearEvaluacion = () => {
     const handleFileChange = (e) => {
         if (e.target.files && e.target.files.length > 0) {
             setSelectedFile(e.target.files[0]);
+            setResultadoIA(null);
         }
     };
 
@@ -118,27 +137,26 @@ const CrearEvaluacion = () => {
         setError('');
 
         try {
+            // La IA usa edad y sexo del paciente (los busca el backend) y el sitio anatómico.
             const data = new FormData();
             data.append('imagen', selectedFile);
+            data.append(isFromPaciente ? 'id_paciente' : 'id_lesion', id);
+            if (formData.sitio_anatomico) data.append('sitio_anatomico', formData.sitio_anatomico);
 
             const result = await api.evaluaciones.predictLive(data);
 
             if (result && result.success) {
+                // Los criterios ABCDE se prellenan con la sugerencia de la IA; el
+                // médico los confirma o corrige antes de guardar.
                 const aiData = result.data;
                 setFormData(prev => ({
                     ...prev,
-                    prediccion_ia: aiData.prediccion_ia || prev.prediccion_ia,
-                    diametro_mm: aiData.diametro_mm || prev.diametro_mm,
-                    asimetria: aiData.asimetria !== undefined ? aiData.asimetria : prev.asimetria,
-                    bordes_irregulares: aiData.bordes_irregulares !== undefined ? aiData.bordes_irregulares : prev.bordes_irregulares,
-                    color_variable: aiData.color_variable !== undefined ? aiData.color_variable : prev.color_variable,
+                    diametro_mm: aiData.diametro_mm ?? prev.diametro_mm,
+                    asimetria: aiData.asimetria ?? prev.asimetria,
+                    bordes_irregulares: aiData.bordes_irregulares ?? prev.bordes_irregulares,
+                    color_variable: aiData.color_variable ?? prev.color_variable,
                 }));
-
-                if (result.explanation) {
-                    setExplanationIA(result.explanation);
-                }
-
-                alert('Análisis de IA completado exitosamente.');
+                setResultadoIA(result.ia);
             } else {
                 setError('La IA no devolvió un formato válido.');
             }
@@ -172,23 +190,24 @@ const CrearEvaluacion = () => {
             if (isFromPaciente) {
                 const nuevaLesion = await api.lesiones.create({
                     id_paciente: Number(id),
-                    zona_cuerpo: formData.zona_cuerpo,
+                    zona_cuerpo: etiquetaSitio(formData.sitio_anatomico),
+                    sitio_anatomico: formData.sitio_anatomico,
                     fecha_deteccion: new Date(formData.fecha_deteccion).toISOString(),
                     notas_ubicacion: formData.notas_ubicacion
                 });
                 lesionIdToUse = nuevaLesion.id_lesion;
+            } else if (lesion && formData.sitio_anatomico && formData.sitio_anatomico !== lesion.sitio_anatomico) {
+                await api.lesiones.update(id, { sitio_anatomico: formData.sitio_anatomico });
             }
 
+            // Quién registra y el resultado de la IA los pone el backend.
             const data = new FormData();
             data.append('id_lesion', lesionIdToUse);
-            data.append('id_usuario_registro', currentUser?.id_usuario || 1);
-            data.append('id_medico_validador', currentUser?.id_usuario || 1); // Mock mismo validador por ahora
-
             data.append('imagen', selectedFile);
 
-            // Appending all booleans and strings
+            const CAMPOS_LESION = ['sitio_anatomico', 'fecha_deteccion', 'notas_ubicacion', 'ruta_imagen'];
             Object.keys(formData).forEach(key => {
-                if (key !== 'zona_cuerpo' && key !== 'fecha_deteccion' && key !== 'notas_ubicacion' && key !== 'ruta_imagen') {
+                if (!CAMPOS_LESION.includes(key)) {
                     data.append(key, formData[key]);
                 }
             });
@@ -238,20 +257,27 @@ const CrearEvaluacion = () => {
                             <div className="form-section">
                                 <h3 className="section-title"><MapPin size={18} /> Datos de la Lesión Evaluada</h3>
 
+                                {lesion && (
+                                    <p className="text-sm text-muted mb-16">Lesión registrada como: {lesion.zona_cuerpo}</p>
+                                )}
                                 <div className="form-group">
-                                    <label className="form-label">Zona del Cuerpo *</label>
-                                    <input
-                                        type="text"
-                                        name="zona_cuerpo"
-                                        value={formData.zona_cuerpo}
+                                    <label className="form-label">Sitio anatómico *</label>
+                                    <select
+                                        name="sitio_anatomico"
+                                        value={formData.sitio_anatomico}
                                         onChange={handleChange}
                                         className="form-input"
-                                        placeholder="Ej. Espalda Alta..."
-                                        maxLength={100}
                                         required
-                                    />
+                                    >
+                                        <option value="" disabled>Seleccionar...</option>
+                                        {SITIOS_ANATOMICOS.map(s => (
+                                            <option key={s.valor} value={s.valor}>{s.etiqueta}</option>
+                                        ))}
+                                    </select>
+                                    <span className="text-xs text-muted">La IA lo usa junto con la edad y el sexo del paciente.</span>
                                 </div>
 
+                                {isFromPaciente && (<>
                                 <div className="form-group mt-16">
                                     <label className="form-label">Fecha de Detección Original *</label>
                                     <div className="input-with-icon" style={{ position: 'relative' }}>
@@ -279,6 +305,7 @@ const CrearEvaluacion = () => {
                                         placeholder="Detalles sobre su localización..."
                                     ></textarea>
                                 </div>
+                                </>)}
                             </div>
 
                             <div className="form-section">
@@ -329,11 +356,18 @@ const CrearEvaluacion = () => {
                             </div>
 
                             <div className="form-section">
-                                <h3 className="section-title"><BrainCircuit size={18} /> Análisis IA (Automático)</h3>
-                                <div className="ai-notice-box glass">
-                                    <BrainCircuit size={24} className="text-primary mb-8" />
-                                    <p className="text-sm text-center">La predicción del modelo experto (Melanoma &gt;80%) se generará automáticamente después de guardar.</p>
-                                </div>
+                                <h3 className="section-title"><BrainCircuit size={18} /> Análisis IA</h3>
+                                {resultadoIA ? (
+                                    <ResultadoIA resultado={resultadoIA} />
+                                ) : (
+                                    <div className="ai-notice-box glass">
+                                        <BrainCircuit size={24} className="text-primary mb-8" />
+                                        <p className="text-sm text-center">
+                                            Analice la imagen para ver la opinión de los dos modelos y prellenar los criterios ABCDE.
+                                            Al guardar, la IA se vuelve a calcular y queda registrada con la evaluación.
+                                        </p>
+                                    </div>
+                                )}
                             </div>
 
                         </div>
@@ -387,16 +421,11 @@ const CrearEvaluacion = () => {
                                 </div>
 
                                 <div className="form-group mt-16">
-                                    <label className="form-label">Predicción IA (%)</label>
-                                    <input
-                                        type="number"
-                                        step="0.1"
-                                        name="prediccion_ia"
-                                        value={formData.prediccion_ia || ''}
-                                        onChange={handleChange}
-                                        className="form-input"
-                                        placeholder="Valor sugerido por IA..."
-                                    />
+                                    <label className="form-label">Predicción IA (Fusión)</label>
+                                    {/* Solo lectura: la calcula el backend al guardar. */}
+                                    <div className="form-input" style={{ opacity: 0.8 }}>
+                                        {resultadoIA ? `${(100 * resultadoIA.fusion.prob_maligno).toFixed(1)}% · umbral ${(100 * resultadoIA.fusion.umbral).toFixed(1)}%` : 'Se calcula al analizar la imagen'}
+                                    </div>
                                 </div>
 
                                 <div className="form-group mt-16">
@@ -485,47 +514,16 @@ const CrearEvaluacion = () => {
                     </div>
 
                     <div className="form-actions mt-32 border-top pt-24">
-                        <button type="submit" className="btn btn-primary lg-btn" style={{ margin: '0 auto', display: 'flex' }}>
+                        <button type="submit" className="btn btn-primary lg-btn" style={{ margin: '0 auto', display: 'flex' }} disabled={isSaving}>
                             <Save size={20} />
-                            <span>Guardar Evaluación Completa</span>
+                            <span>{isSaving ? 'Guardando (la IA analiza la imagen)...' : 'Guardar Evaluación Completa'}</span>
                         </button>
                     </div>
                 </form>
             </div>
 
-            {explanationIA && (
-                <div style={modalOverlayStyle}>
-                    <div style={modalContentStyle}>
-                        <h3 style={{ marginTop: 0, color: '#4f46e5' }}><BrainCircuit className="inline-block mr-2" /> Explicación de la IA</h3>
-                        <p style={{ whiteSpace: 'pre-wrap', color: 'black', fontSize: '14px', lineHeight: '1.6' }}>{explanationIA}</p>
-                        <div style={{ marginTop: '20px', textAlign: 'right' }}>
-                            <button onClick={() => setExplanationIA(null)} className="btn btn-outline">Cerrar</button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
-};
-
-const modalOverlayStyle = {
-    position: 'fixed',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 9999
-};
-
-const modalContentStyle = {
-    backgroundColor: 'white',
-    padding: '24px',
-    borderRadius: '12px',
-    maxWidth: '500px',
-    width: '90%',
-    maxHeight: '80vh',
-    overflowY: 'auto'
 };
 
 export default CrearEvaluacion;

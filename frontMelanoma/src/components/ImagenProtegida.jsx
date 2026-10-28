@@ -2,31 +2,33 @@ import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 
 /**
- * Foto de una evaluación. El backend ya no sirve /uploads en público: la imagen
- * se pide con el token de sesión y se muestra como blob.
+ * Foto de una evaluación (o un mapa de la IA con `ruta`). El backend ya no sirve
+ * /uploads en público: la imagen se pide con el token de sesión y se muestra
+ * como blob.
  */
-const ImagenProtegida = ({ idEvaluacion, alt = 'Imagen clínica', className, style, comoFondo = false, children }) => {
-    // Resultado de la última carga, con el id al que corresponde: si cambia el
-    // id, se muestra "Cargando..." hasta que llegue la imagen nueva.
+const ImagenProtegida = ({ idEvaluacion, ruta, alt = 'Imagen clínica', className, style, comoFondo = false, children }) => {
+    const origen = ruta || `/evaluaciones/${idEvaluacion}/imagen`;
+    // Resultado de la última carga, con la ruta a la que corresponde: si cambia,
+    // se muestra "Cargando..." hasta que llegue la imagen nueva.
     const [carga, setCarga] = useState({ id: null, url: null, error: false });
 
     useEffect(() => {
         let objectUrl = null;
         let activo = true;
-        api.evaluaciones.getImagen(idEvaluacion)
+        api.evaluaciones.getArchivo(origen)
             .then(blob => {
                 if (!activo) return;
                 objectUrl = URL.createObjectURL(blob);
-                setCarga({ id: idEvaluacion, url: objectUrl, error: false });
+                setCarga({ id: origen, url: objectUrl, error: false });
             })
-            .catch(() => activo && setCarga({ id: idEvaluacion, url: null, error: true }));
+            .catch(() => activo && setCarga({ id: origen, url: null, error: true }));
         return () => {
             activo = false;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         };
-    }, [idEvaluacion]);
+    }, [origen]);
 
-    const vigente = carga.id === idEvaluacion;
+    const vigente = carga.id === origen;
     const url = vigente ? carga.url : null;
     const error = vigente && carga.error;
 

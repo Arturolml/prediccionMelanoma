@@ -1,0 +1,183 @@
+.ria {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ria-decision {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+}
+
+.ria-maligno {
+  background: var(--color-maligno-bg);
+  color: var(--color-maligno);
+}
+
+.ria-benigno {
+  background: var(--color-benigno-bg);
+  color: var(--color-benigno);
+}
+
+.ria-revisar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--color-sospechoso-bg);
+  color: var(--color-sospechoso);
+  font-size: 0.9rem;
+}
+
+.ria-opiniones {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ria-opinion {
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--color-benigno);
+}
+
+.ria-opinion.ria-sospecha {
+  border-left-color: var(--color-maligno);
+}
+
+.ria-opinion-titulo {
+  font-weight: 600;
+}
+
+.ria-prob {
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.ria-barra {
+  position: relative;
+  height: 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  margin-bottom: 6px;
+}
+
+.ria-barra-valor {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--primary);
+}
+
+.ria-sospecha .ria-barra-valor {
+  background: var(--color-maligno);
+}
+
+.ria-barra-umbral {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 14px;
+  background: var(--text-main);
+}
+
+.ria-bloque h4 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.ria-mapas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.ria-mapa {
+  margin: 0;
+  text-align: center;
+}
+
+.ria-mapa img {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+}
+
+.ria-aporte {
+  display: grid;
+  grid-template-columns: minmax(110px, 1.2fr) 2fr minmax(70px, auto);
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  margin-bottom: 4px;
+}
+
+.ria-aporte-eje {
+  position: relative;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-full);
+}
+
+.ria-aporte-eje::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 1px;
+  height: 14px;
+  background: var(--text-muted);
+}
+
+.ria-aporte-barra {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+.ria-aporte-barra.positivo {
+  background: var(--color-maligno);
+}
+
+.ria-aporte-barra.negativo {
+  background: var(--primary);
+}
+
+.ria-aporte-valor {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.ria-tabla {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.ria-tabla td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ria-tabla td:first-child {
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+.ria-advertencia {
+  color: var(--color-sospechoso);
+  margin: 6px 0 0;
+}
+
+.ria-pie {
+  margin: 0;
+}
