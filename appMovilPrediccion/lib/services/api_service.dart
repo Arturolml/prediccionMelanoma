@@ -480,7 +480,14 @@ class ApiService {
 
   // --- Evaluaciones (Predict Live) ---
 
-  Future<Map<String, dynamic>?> predictEvaluacionLive(File imageFile) async {
+  /// Análisis en vivo con la IA. El backend necesita el paciente (o la
+  /// lesión) para mandar edad y sexo a la IA, y el sitio anatómico.
+  Future<Map<String, dynamic>?> predictEvaluacionLive(
+    File imageFile, {
+    int? idPaciente,
+    int? idLesion,
+    String? sitioAnatomico,
+  }) async {
     try {
       var request = http.MultipartRequest(
         'POST',
@@ -488,6 +495,11 @@ class ApiService {
       );
       if (_token != null) {
         request.headers['Authorization'] = 'Bearer $_token';
+      }
+      if (idLesion != null) request.fields['id_lesion'] = '$idLesion';
+      if (idPaciente != null) request.fields['id_paciente'] = '$idPaciente';
+      if (sitioAnatomico != null) {
+        request.fields['sitio_anatomico'] = sitioAnatomico;
       }
 
       var stream = http.ByteStream(imageFile.openRead());

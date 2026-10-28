@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
+import 'package:flutter_app_1/constants/sitios.dart';
+import 'package:flutter_app_1/presentation/widgets/resultado_ia.dart';
 import 'package:flutter_app_1/services/api_service.dart';
 
 class CrearEvaluacionScreen extends StatefulWidget {
@@ -20,11 +22,9 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
 
   // Controllers
   // _rutaImagenController is now managed internally by _storedImage
-  final _prediccionIaController = TextEditingController();
   final _diametroController = TextEditingController();
   // final _diagnosticoMedicoController = TextEditingController(); // Removed in favor of Dropdown
   final _notasMedicoController = TextEditingController();
-  final _zonaCuerpoController = TextEditingController();
   final _notasUbicacionController = TextEditingController();
 
   // State Variables
@@ -33,6 +33,11 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
   final ImagePicker _picker = ImagePicker();
 
   String? _diagnosticoMedico; // Dropdown value
+
+  // Uno de los 16 sitios del modelo de Fusión (zona_cuerpo se llena con su etiqueta).
+  String? _sitioAnatomico;
+  // Resultado del análisis en vivo (API de IA v2).
+  Map<String, dynamic>? _resultadoIA;
 
   // ABCDE Rules
   bool _asimetria = false;
@@ -80,11 +85,9 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
   @override
   void dispose() {
     _connectivitySubscription.cancel();
-    _prediccionIaController.dispose();
     _diametroController.dispose();
     // _diagnosticoMedicoController.dispose();
     _notasMedicoController.dispose();
-    _zonaCuerpoController.dispose();
     _notasUbicacionController.dispose();
     super.dispose();
   }
@@ -99,6 +102,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
 
     setState(() {
       _storedImage = File(image.path);
+      _resultadoIA = null;
     });
   }
 
@@ -117,7 +121,11 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     });
 
     final api = ApiService();
-    final result = await api.predictEvaluacionLive(_storedImage!);
+    final result = await api.predictEvaluacionLive(
+      _storedImage!,
+      idPaciente: widget.pacienteId,
+      sitioAnatomico: _sitioAnatomico,
+    );
 
     setState(() {
       _isLoadingIA = false;
@@ -126,41 +134,23 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     if (!mounted) return;
 
     if (result != null && result['success'] == true) {
+      // Los criterios ABCDE se prellenan con la sugerencia de la IA; el médico
+      // los confirma o corrige antes de guardar.
       final data = result['data'];
 
       setState(() {
-        if (data['prediccion_ia'] != null) {
-          _prediccionIaController.text = data['prediccion_ia'].toString();
-        }
         if (data['diametro_mm'] != null) {
           _diametroController.text = data['diametro_mm'].toString();
         }
         if (data['asimetria'] != null) _asimetria = data['asimetria'];
-        if (data['bordes_irregulares'] != null)
+        if (data['bordes_irregulares'] != null) {
           _bordesIrregulares = data['bordes_irregulares'];
-        if (data['color_variable'] != null)
+        }
+        if (data['color_variable'] != null) {
           _colorVariable = data['color_variable'];
+        }
+        _resultadoIA = Map<String, dynamic>.from(result['ia'] ?? {});
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Análisis IA completado exitosamente.')),
-      );
-
-      if (result['explanation'] != null) {
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Explicación IA'),
-            content: SingleChildScrollView(child: Text(result['explanation'])),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cerrar'),
-              ),
-            ],
-          ),
-        );
-      }
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Error al procesar la imagen con IA.')),
@@ -189,7 +179,8 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
 
       final lesionData = {
         'id_paciente': pacienteId,
-        'zona_cuerpo': _zonaCuerpoController.text,
+        'zona_cuerpo': etiquetaSitio(_sitioAnatomico),
+        'sitio_anatomico': _sitioAnatomico ?? 'unknown',
         'fecha_deteccion': _fecha.toIso8601String(),
         'notas_ubicacion': _notasUbicacionController.text,
       };
@@ -206,17 +197,16 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
         return;
       }
 
+      // Quién registra y el resultado de la IA los pone el backend (la IA se
+      // vuelve a calcular al guardar).
+      final diametro = double.tryParse(_diametroController.text);
       final newEvaluacion = {
         'id_lesion': lesionId,
         'fecha_evaluacion': _fecha.toIso8601String(),
-        'id_usuario_registro': 1, // Idealmente del token/usuario logueado
-        'id_medico_validador': 1, // Idealmente del token/usuario logueado
-        // 'ruta_imagen': savedPath, // Backend lo maneja con el archivo
-        'prediccion_ia': double.tryParse(_prediccionIaController.text) ?? 0.0,
         'asimetria': _asimetria,
         'bordes_irregulares': _bordesIrregulares,
         'color_variable': _colorVariable,
-        'diametro_mm': double.tryParse(_diametroController.text) ?? 0.0,
+        if (diametro != null) 'diametro_mm': diametro,
         'evolucion_cambios': _evolucionCambios,
         'sintoma_sangrado': _sintomaSangrado,
         'sintoma_picazon': _sintomaPicazon,
@@ -357,6 +347,16 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                 ],
               ),
 
+              if (_resultadoIA != null) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'Análisis IA',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                ),
+                const Divider(),
+                ResultadoIAView(resultado: _resultadoIA!),
+              ],
+
               const SizedBox(height: 16),
 
               // 2. Información Lesión
@@ -367,19 +367,25 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
               ),
               const Divider(),
 
-              TextFormField(
-                controller: _zonaCuerpoController,
+              DropdownButtonFormField<String>(
+                initialValue: _sitioAnatomico,
+                isExpanded: true,
                 decoration: const InputDecoration(
-                  labelText: 'Zona del Cuerpo (Ej. Espalda, Brazo)',
+                  labelText: 'Sitio anatómico',
+                  helperText: 'La IA lo usa junto con la edad y el sexo.',
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.accessibility_new),
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Ingrese la zona del cuerpo';
-                  }
-                  return null;
-                },
+                items: [
+                  for (final s in sitiosAnatomicos)
+                    DropdownMenuItem(value: s.key, child: Text(s.value)),
+                ],
+                onChanged: (v) => setState(() {
+                  _sitioAnatomico = v;
+                  _resultadoIA = null; // el análisis usó el sitio anterior
+                }),
+                validator: (v) =>
+                    v == null ? 'Seleccione el sitio anatómico' : null,
               ),
               const SizedBox(height: 16),
 
@@ -470,18 +476,6 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
               ),
               const Divider(),
-
-              TextFormField(
-                controller: _prediccionIaController,
-                decoration: const InputDecoration(
-                  labelText: 'Predicción IA (%) (Opcional)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-              ),
-              const SizedBox(height: 16),
 
               DropdownButtonFormField<String>(
                 value: _diagnosticoMedico,
