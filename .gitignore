@@ -1,1 +1,4 @@
 *.keras
+
+# Pesos de los modelos de IA (se copian al servidor, no van en git)
+artefactos_ia/

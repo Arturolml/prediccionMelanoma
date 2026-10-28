@@ -53,9 +53,14 @@ services:
     restart: unless-stopped
     ports:
       - "8001:8000" # Expuesto al host para validaciones, consumible en http://localhost:8001 por Nginx Nativo
+    environment:
+      ARTEFACTOS_DIR: /app/artefactos
+      IA_DEVICE: cpu
+      # IA_HILOS: "4"   # opcional: limitar los hilos de CPU de PyTorch
     volumes:
-      # Opcional: montar el modelo keras por fuera si planeas actualizarlo sin reconstruir imagen
-      - ./api-prediccion-ai/modelo_cnn__optimizado_280226_final.keras:/app/modelo_cnn__optimizado_280226_final.keras:ro
+      # Pesos y configuracion de los modelos (Fase 14, ~765 MB, con manifiesto de
+      # hashes). No van en git: se copian al servidor en esta carpeta.
+      - ./artefactos_ia/fase14-2026-10-26:/app/artefactos:ro
     networks:
       - melanoma_net
 
