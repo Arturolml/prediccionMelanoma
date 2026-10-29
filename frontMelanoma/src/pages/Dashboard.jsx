@@ -81,7 +81,7 @@ const Dashboard = () => {
                             </thead>
                             <tbody>
                                 {stats.recientes.map((evaluacion) => (
-                                    <tr key={evaluacion.id}>
+                                    <tr key={evaluacion.id_evaluacion}>
                                         <td className="font-medium">{evaluacion.paciente?.nombres || evaluacion.paciente || 'Desconocido'}</td>
                                         <td>{evaluacion.fecha_evaluacion ? new Date(evaluacion.fecha_evaluacion).toLocaleDateString() : evaluacion.fecha || '-'}</td>
                                         <td>
@@ -94,8 +94,8 @@ const Dashboard = () => {
                                             <span className="text-xs text-muted">{evaluacion.prediccion_ia || evaluacion.ia || 0}% Probabilidad</span>
                                         </td>
                                         <td>
-                                            <span className={`badge badge-${(evaluacion.diagnostico || 'Indeterminado').toLowerCase().split('_')[0]}`}>
-                                                {(evaluacion.diagnostico || 'Indeterminado').replace('_', '/')}
+                                            <span className={`badge badge-${(evaluacion.diagnostico_medico || 'Indeterminado').toLowerCase().split('_')[0]}`}>
+                                                {(evaluacion.diagnostico_medico || 'Indeterminado').replace('_', '/')}
                                             </span>
                                         </td>
                                         <td>

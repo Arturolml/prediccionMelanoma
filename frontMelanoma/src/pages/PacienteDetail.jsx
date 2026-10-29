@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Edit, Calendar, Activity, FileText } from 'lucide-react';
 import { api } from '../services/api';
+import ImagenProtegida from '../components/ImagenProtegida';
 import './PacienteDetail.css';
 
 const PacienteDetail = () => {
@@ -161,8 +162,8 @@ const PacienteDetail = () => {
                                     <div className="lesion-header flex-between mb-8">
                                         <div className="lesion-title flex items-center">
                                             {evaluacion.ruta_imagen ? (
-                                                <img
-                                                    src={`https://liaaproyectos.uaz.edu.mx${evaluacion.ruta_imagen}`}
+                                                <ImagenProtegida
+                                                    idEvaluacion={evaluacion.id_evaluacion}
                                                     alt="Evidencia"
                                                     className="w-12 h-12 object-cover rounded mr-12"
                                                     style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px', marginRight: '12px' }}
@@ -170,18 +171,18 @@ const PacienteDetail = () => {
                                             ) : (
                                                 <Activity size={20} className="text-primary mr-12" style={{ marginRight: '12px' }} />
                                             )}
-                                            <h3>{evaluacion.diagnostico || 'Sin diagnóstico'}</h3>
+                                            <h3>{(evaluacion.diagnostico_medico || 'Sin diagnóstico').replace('_', ' / ')}</h3>
                                         </div>
                                     </div>
 
                                     <div className="lesion-body">
                                         <div className="lesion-stat mb-8">
                                             <Calendar size={16} className="text-muted mr-8" style={{ marginRight: '8px' }} />
-                                            <span className="text-sm">Fecha: {formatDate(evaluacion.fecha)}</span>
+                                            <span className="text-sm">Fecha: {formatDate(evaluacion.fecha_evaluacion)}</span>
                                         </div>
-                                        {evaluacion.observaciones && (
+                                        {evaluacion.notas_medico && (
                                             <p className="text-sm text-muted line-clamp-2">
-                                                {evaluacion.observaciones}
+                                                {evaluacion.notas_medico}
                                             </p>
                                         )}
                                     </div>

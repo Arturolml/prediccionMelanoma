@@ -1,13 +1,25 @@
-import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException, NotFoundException, Res, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { EvaluacionesService } from './evaluaciones.service';
+import type { Response } from 'express';
+import { opcionesSubidaImagen, resolverRutaGuardada } from '../archivos/archivos';
+import { EvaluacionesService, TIPOS_MAPA, TipoMapa } from './evaluaciones.service';
 import { PacientesService } from '../pacientes/pacientes.service';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+
+const DIAGNOSTICOS = ['Benigno', 'Sospechoso', 'Maligno_Melanoma', 'Indeterminado'];
+
+function entero(valor: string | undefined): number | undefined {
+  const n = Number(valor);
+  return valor && Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function numero(valor: string | undefined): number | undefined {
+  const n = Number(valor);
+  return valor && Number.isFinite(n) ? n : undefined;
+}
 
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('evaluaciones')
@@ -17,106 +29,68 @@ export class EvaluacionesController {
     private readonly pacientesService: PacientesService
   ) { }
 
+  /**
+   * Análisis en vivo de una foto, antes de guardar la evaluación. Campos del
+   * formulario: imagen (archivo) e id_lesion o id_paciente; sitio_anatomico es
+   * opcional (por defecto, el de la lesión). La IA usa edad, sexo y sitio.
+   */
   @Post('predict-live')
   @Roles('medico', 'enfermero')
-  @UseInterceptors(FileInterceptor('imagen', {
-    storage: diskStorage({
-      destination: './uploads/temp',
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = extname(file.originalname);
-        cb(null, `live-${uniqueSuffix}${ext}`);
-      }
-    })
-  }))
+  @UseInterceptors(FileInterceptor('imagen', opcionesSubidaImagen('temp')))
   async predictLive(
-    @UploadedFile() file: Express.Multer.File
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: Record<string, string>,
   ) {
     if (!file) {
       throw new BadRequestException('No se proporcionó una imagen para analizar.');
     }
-
-    // Call the service to process the temporary file with the AI
-    const result = await this.evaluacionesService.predictImageLive(file.path);
-    return result;
+    return this.evaluacionesService.predictImageLive(file.path, {
+      id_lesion: entero(body.id_lesion),
+      id_paciente: entero(body.id_paciente),
+      sitio_anatomico: body.sitio_anatomico || undefined,
+    });
   }
 
   @Post()
   @Roles('medico', 'enfermero')
-  @UseInterceptors(FileInterceptor('imagen', {
-    storage: diskStorage({
-      destination: async (req, file, cb) => {
-        // Mock logic - we need to query DB to get CURP, but multer runs before handler.
-        // Strategy: Save to temp, then move? Or just use ID?
-        // Better: Use a custom storage engine or just save to 'uploads' globally and simpler logic?
-        // Requirement: "carpeta con la curp". 
-        // Problem: We don't have the patient CURP easily available in multer config sync.
-        // Solution: Save to './uploads/temp', then in the handler move it.
-        cb(null, './uploads');
-      },
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = extname(file.originalname);
-        cb(null, `temp-${uniqueSuffix}${ext}`);
-      }
-    })
-  }))
+  // Se guarda primero en uploads/temp; el servicio la mueve a la carpeta del paciente.
+  @UseInterceptors(FileInterceptor('imagen', opcionesSubidaImagen('temp')))
   async create(
-    @Body() createEvaluacioneDto: any, // Use any because multipart/form-data sends strings
+    @Req() req: any,
+    @Body() body: Record<string, string>, // multipart/form-data: todo llega como texto
     @UploadedFile() file: Express.Multer.File
   ) {
-    // 1. Convert DTO types (multipart sends everything as strings)
-    const dto: CreateEvaluacioneDto = {
-      ...createEvaluacioneDto,
-      id_lesion: +createEvaluacioneDto.id_lesion,
-      id_usuario_registro: +createEvaluacioneDto.id_usuario_registro,
-      id_medico_validador: +createEvaluacioneDto.id_medico_validador,
-      prediccion_ia: createEvaluacioneDto.prediccion_ia ? +createEvaluacioneDto.prediccion_ia : undefined,
-      diametro_mm: createEvaluacioneDto.diametro_mm ? +createEvaluacioneDto.diametro_mm : undefined,
-      // Boolean conversion
-      asimetria: createEvaluacioneDto.asimetria === 'true',
-      bordes_irregulares: createEvaluacioneDto.bordes_irregulares === 'true',
-      color_variable: createEvaluacioneDto.color_variable === 'true',
-      evolucion_cambios: createEvaluacioneDto.evolucion_cambios === 'true',
-      sintoma_sangrado: createEvaluacioneDto.sintoma_sangrado === 'true',
-      sintoma_picazon: createEvaluacioneDto.sintoma_picazon === 'true',
-      sintoma_dolor: createEvaluacioneDto.sintoma_dolor === 'true',
-      sintoma_ulceracion: createEvaluacioneDto.sintoma_ulceracion === 'true',
-      requiere_biopsia: createEvaluacioneDto.requiere_biopsia === 'true',
-      fecha_evaluacion: createEvaluacioneDto.fecha_evaluacion ? new Date(createEvaluacioneDto.fecha_evaluacion) : undefined,
-    };
-
-    // 2. Get Patient CURP to organize file
-    // Note: DTO has id_lesion. We need to find patient from lesion.
-    // Assuming we can get patient ID from lesion or it's passed (it's not in CreateEvaluacioneDto usually, but linked via Lesion)
-    // Let's assume we can fetch it. 
-    // Actually, Lesion belongs to Patient.
-    // We need to inject LesionesService? Or just use Prisma in EvaluacionService?
-    // Let's do the move logic in Service for cleaner code, OR do it here.
-    // Let's do it here to keep Service clean of file IO if possible, or pass the file path.
-
-    // Wait! logic is complex. Let's simplify:
-    // User wants folders by CURP.
-    // We need to:
-    // a) Get Lesion -> Get Patient -> Get CURP
-    // b) Create folder `uploads/CURP/`
-    // c) Move file `uploads/temp-xxx.jpg` to `uploads/CURP/timestamp.jpg`
-    // d) Save new path to DB.
-
-    // To do this, we need valid id_lesion check first.
-    // Let's delegate this to the service? 
-    // No, controller is fine for presentation/file handling.
-
-    // We need LesionesService or just use Prisma? 
-    // EvaluacionesService likely uses Prisma. Let's pass the temp path and let the Service handle the logic?
-    // User asked "como puedo hacer...".
-    // Let's implement full logic in Controller for visibility or Service. 
-    // Let's put it in Service `createWithImage`.
-
-    if (file) {
-      dto.ruta_imagen = file.path; // Temporary, service will update it
+    if (!file) {
+      throw new BadRequestException('Falta la imagen de la evaluación.');
     }
-
+    const idLesion = entero(body.id_lesion);
+    if (!idLesion) {
+      throw new BadRequestException('Falta id_lesion.');
+    }
+    const usuario = req.user;
+    // Solo los campos que llena el usuario: el resultado de la IA lo calcula el
+    // backend (antes se copiaba el formulario completo, con lo que el cliente
+    // podía escribir cualquier columna). Quién registra sale del token, no del
+    // formulario (la app móvil mandaba 1 fijo).
+    const dto: CreateEvaluacioneDto = {
+      id_lesion: idLesion,
+      id_usuario_registro: +usuario.userId,
+      id_medico_validador: usuario.rol === 'medico' ? +usuario.userId : undefined,
+      ruta_imagen: file.path, // temporal: el servicio la mueve a la carpeta del paciente
+      diametro_mm: numero(body.diametro_mm),
+      asimetria: body.asimetria === 'true',
+      bordes_irregulares: body.bordes_irregulares === 'true',
+      color_variable: body.color_variable === 'true',
+      evolucion_cambios: body.evolucion_cambios === 'true',
+      sintoma_sangrado: body.sintoma_sangrado === 'true',
+      sintoma_picazon: body.sintoma_picazon === 'true',
+      sintoma_dolor: body.sintoma_dolor === 'true',
+      sintoma_ulceracion: body.sintoma_ulceracion === 'true',
+      requiere_biopsia: body.requiere_biopsia === 'true',
+      diagnostico_medico: DIAGNOSTICOS.includes(body.diagnostico_medico) ? body.diagnostico_medico : undefined,
+      notas_medico: body.notas_medico || undefined,
+      fecha_evaluacion: body.fecha_evaluacion ? new Date(body.fecha_evaluacion) : undefined,
+    };
     return this.evaluacionesService.createWithImage(dto, file);
   }
 
@@ -134,6 +108,26 @@ export class EvaluacionesController {
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.evaluacionesService.findOne(+id);
+  }
+
+  /** Foto de la evaluación (antes se servía pública en /uploads, con el CURP en la ruta). */
+  @Get(':id/imagen')
+  async imagen(@Param('id') id: string, @Res() res: Response) {
+    const evaluacion = await this.evaluacionesService.findOne(+id);
+    const ruta = resolverRutaGuardada(evaluacion.ruta_imagen);
+    if (!ruta) throw new NotFoundException('La evaluación no tiene imagen disponible');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.sendFile(ruta);
+  }
+
+  /** Mapa de la IA: fusion o qresnet (Grad-CAM) o contorno (lesión segmentada). */
+  @Get(':id/mapa/:tipo')
+  async mapa(@Param('id') id: string, @Param('tipo') tipo: string, @Res() res: Response) {
+    if (!(tipo in TIPOS_MAPA)) throw new NotFoundException(`Tipo de mapa desconocido: ${tipo}`);
+    const ruta = await this.evaluacionesService.rutaMapa(+id, tipo as TipoMapa);
+    if (!ruta) throw new NotFoundException('La evaluación no tiene ese mapa');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.sendFile(ruta);
   }
 }
 

@@ -1,4 +1,5 @@
-import { PartialType } from '@nestjs/swagger';
+import { OmitType, PartialType } from '@nestjs/swagger';
 import { CreateLesioneDto } from './create-lesione.dto';
 
-export class UpdateLesioneDto extends PartialType(CreateLesioneDto) {}
+// La lesión no cambia de paciente.
+export class UpdateLesioneDto extends PartialType(OmitType(CreateLesioneDto, ['id_paciente'] as const)) {}

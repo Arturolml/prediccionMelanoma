@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app_1/presentation/widgets/resultado_ia.dart';
 import 'package:flutter_app_1/services/api_service.dart';
 
 class DetalleEvaluacionScreen extends StatelessWidget {
@@ -10,8 +11,9 @@ class DetalleEvaluacionScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     // Construct full image URL
     final String? rutaImagen = evaluacion['ruta_imagen'];
-    final String imageUrl = rutaImagen != null
-        ? '${ApiService.baseUrl}$rutaImagen'
+    final String imageUrl =
+        rutaImagen != null && evaluacion['id_evaluacion'] != null
+        ? ApiService.urlImagenEvaluacion(evaluacion['id_evaluacion'])
         : '';
 
     return Scaffold(
@@ -24,6 +26,7 @@ class DetalleEvaluacionScreen extends StatelessWidget {
               InteractiveViewer(
                 child: Image.network(
                   imageUrl,
+                  headers: ApiService().imagenHeaders,
                   height: 300,
                   fit: BoxFit.contain,
                   loadingBuilder: (context, child, loadingProgress) {
@@ -120,10 +123,7 @@ class DetalleEvaluacionScreen extends StatelessWidget {
                     'Fecha:',
                     _formatDate(evaluacion['fecha_evaluacion']),
                   ),
-                  _buildInfoRow(
-                    'Predicción IA:',
-                    '${evaluacion['prediccion_ia'] ?? 0}%',
-                  ),
+                  _buildInfoRow('Predicción IA (Fusión):', _textoPrediccion()),
                   _buildInfoRow(
                     'Biopsia Requerida:',
                     evaluacion['requiere_biopsia'] == true ? 'SÍ' : 'NO',
@@ -143,12 +143,25 @@ class DetalleEvaluacionScreen extends StatelessWidget {
                   ),
                   _buildInfoRow(
                     'Diámetro:',
-                    '${evaluacion['diametro_mm'] ?? 0} mm',
+                    evaluacion['diametro_mm'] != null
+                        ? '${evaluacion['diametro_mm']} mm'
+                        : 'N/A',
                   ),
                   _buildBooleanRow(
                     'Evolución/Cambios:',
                     evaluacion['evolucion_cambios'],
                   ),
+
+                  if (evaluacion['resultado_ia'] is Map) ...[
+                    const SizedBox(height: 16),
+                    _buildSectionTitle('Análisis IA'),
+                    ResultadoIAView(
+                      resultado: Map<String, dynamic>.from(
+                        evaluacion['resultado_ia'],
+                      ),
+                      idEvaluacion: evaluacion['id_evaluacion'],
+                    ),
+                  ],
 
                   const SizedBox(height: 16),
                   _buildSectionTitle('Síntomas'),
@@ -182,6 +195,19 @@ class DetalleEvaluacionScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Probabilidad de Fusión con la decisión de la IA (con su umbral de
+  /// cribado), no solo el porcentaje.
+  String _textoPrediccion() {
+    final p = evaluacion['prediccion_ia'];
+    if (p == null) return 'Sin resultado de IA';
+    final decision = estiloDecision(evaluacion['decision_ia']);
+    if (decision == null) return '$p% (modelo anterior)';
+    final revisar = evaluacion['ia_revisar_caso'] == true
+        ? ' · los modelos no coinciden: revisar'
+        : '';
+    return '$p% · ${decision.texto}$revisar';
   }
 
   Widget _buildSectionTitle(String title) {

@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Calendar, FileImage, CheckCircle, AlertTriangle, ShieldAlert, Activity, ClipboardList } from 'lucide-react';
+import { ArrowLeft, Calendar, CheckCircle, AlertTriangle, ShieldAlert, Activity, ClipboardList, MapPin } from 'lucide-react';
 import { api } from '../services/api';
+import ImagenProtegida from '../components/ImagenProtegida';
+import ResultadoIA from '../components/ResultadoIA';
+import { estiloDecision } from '../constants/decision';
+import { SITIOS_ANATOMICOS, etiquetaSitio } from '../constants/sitios';
 import './LesionDetail.css';
 
 const DiagnosticBadge = ({ type }) => {
@@ -50,12 +54,56 @@ const FeatureList = ({ items, type }) => (
     </div>
 );
 
+/** Resumen de la IA de una evaluación: color por la decisión (con el umbral de
+ * cribado de cada modelo), no por cortes fijos sobre la probabilidad. */
+const ResumenIA = ({ ev }) => {
+    if (ev.prediccion_ia == null) {
+        return <span className="text-muted" style={{ fontSize: '1rem' }}>Sin resultado de IA</span>;
+    }
+    const decision = estiloDecision(ev.decision_ia);
+    if (!decision) {
+        // Evaluación anterior a la Fase 14 (modelo Keras previo, otro umbral).
+        return (
+            <>
+                <span className="text-muted" style={{ fontSize: '1.6rem', fontWeight: 'bold' }}>{Math.round(ev.prediccion_ia)}%</span>
+                <div className="text-xs text-muted">modelo anterior</div>
+            </>
+        );
+    }
+    const color = decision.clase === 'maligno' ? 'var(--color-maligno)' : 'var(--color-benigno)';
+    return (
+        <>
+            <span style={{ fontSize: '2rem', fontWeight: 'bold', color }}>{Number(ev.prediccion_ia).toFixed(1)}%</span>
+            <div className="text-sm" style={{ color, fontWeight: 600 }}>{decision.texto}</div>
+            <div className="text-xs text-muted">QResNet: {Number(ev.prob_qresnet).toFixed(1)}%</div>
+            {ev.ia_revisar_caso && (
+                <div className="text-xs" style={{ color: 'var(--color-sospechoso)', marginTop: '4px' }}>
+                    <AlertTriangle size={12} /> Los modelos no coinciden: revisar
+                </div>
+            )}
+        </>
+    );
+};
+
 const LesionDetail = () => {
     const { id } = useParams();
     const [lesion, setLesion] = useState(null);
     const [evaluaciones, setEvaluaciones] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState('');
+    const [explicacionAbierta, setExplicacionAbierta] = useState(null);
+    const [editandoSitio, setEditandoSitio] = useState(false);
+    const [sitio, setSitio] = useState('unknown');
+
+    const guardarSitio = async () => {
+        try {
+            const actualizada = await api.lesiones.update(id, { sitio_anatomico: sitio });
+            setLesion(actualizada);
+            setEditandoSitio(false);
+        } catch {
+            setError('No se pudo actualizar el sitio anatómico.');
+        }
+    };
 
     useEffect(() => {
         const fetchLesionData = async () => {
@@ -63,6 +111,7 @@ const LesionDetail = () => {
                 setIsLoading(true);
                 const fetchedLesion = await api.lesiones.getById(id);
                 setLesion(fetchedLesion);
+                setSitio(fetchedLesion.sitio_anatomico || 'unknown');
 
                 // Fetch evaluaciones for this lesion
                 const fetchedEvals = await api.evaluaciones.getAll({ id_lesion: id });
@@ -81,6 +130,12 @@ const LesionDetail = () => {
 
         fetchLesionData();
     }, [id]);
+
+    // fecha_deteccion es solo fecha (se guarda a medianoche UTC): se muestra en
+    // UTC y sin hora; antes en hora local salía el día anterior a las 6 p.m.
+    const formatDia = (dateStr) => (dateStr
+        ? new Date(dateStr).toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC' })
+        : '-');
 
     const formatDate = (dateStr) => {
         if (!dateStr) return '-';
@@ -117,7 +172,7 @@ const LesionDetail = () => {
                     </Link>
                     <div className="header-title-row">
                         <h1 className="text-gradient">Lesión: {lesion.zona_cuerpo}</h1>
-                        <DiagnosticBadge type={lesion.diagnostico_actual} />
+                        <DiagnosticBadge type={evaluaciones[0]?.diagnostico_medico} />
                     </div>
                 </div>
                 <Link to={`/lesiones/${id}/nueva-evaluacion`} className="btn btn-primary">
@@ -132,7 +187,30 @@ const LesionDetail = () => {
                         <Calendar size={18} className="text-muted" />
                         <div>
                             <div className="meta-label">Fecha Detección</div>
-                            <div className="font-medium">{formatDate(lesion.fecha_deteccion)}</div>
+                            <div className="font-medium">{formatDia(lesion.fecha_deteccion)}</div>
+                        </div>
+                    </div>
+                    <div className="meta-item">
+                        <MapPin size={18} className="text-muted" />
+                        <div>
+                            <div className="meta-label">Sitio anatómico (para la IA)</div>
+                            {editandoSitio ? (
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                    <select className="form-input" value={sitio} onChange={e => setSitio(e.target.value)}>
+                                        {SITIOS_ANATOMICOS.map(s => <option key={s.valor} value={s.valor}>{s.etiqueta}</option>)}
+                                    </select>
+                                    <button type="button" className="btn btn-primary btn-sm" onClick={guardarSitio}>Guardar</button>
+                                    <button type="button" className="btn btn-glass btn-sm" onClick={() => setEditandoSitio(false)}>Cancelar</button>
+                                </div>
+                            ) : (
+                                <div className="font-medium">
+                                    {etiquetaSitio(lesion.sitio_anatomico)}{' '}
+                                    <button type="button" className="btn btn-glass btn-sm" onClick={() => setEditandoSitio(true)}>Cambiar</button>
+                                    {lesion.sitio_anatomico === 'unknown' && (
+                                        <div className="text-xs" style={{ color: 'var(--color-sospechoso)' }}>Sin sitio: la IA lo toma como desconocido.</div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="meta-item">
@@ -169,28 +247,14 @@ const LesionDetail = () => {
                                         {/* Backend might not return the doctor's name directly without join, so we omit or handle if possible */}
                                         <p className="text-muted text-sm">Validado por ID Médico: {ev.id_medico_validador || 'Pendiente'}</p>
                                     </div>
-                                    <DiagnosticBadge type={ev.diagnostico} />
+                                    <DiagnosticBadge type={ev.diagnostico_medico} />
                                 </div>
 
                                 <div className="eval-grid">
                                     <div className="eval-ai-box">
-                                        <div className="ai-label">Predicción IA (Melanoma)</div>
+                                        <div className="ai-label">Predicción IA (Fusión)</div>
                                         <div className="ai-score">
-                                            {ev.prediccion_ia != null ? (
-                                                <>
-                                                    <span className={`text-gradient ${ev.prediccion_ia > 80 ? 'text-danger' : ev.prediccion_ia > 50 ? 'text-warning' : 'text-success'}`} style={{ fontSize: '2rem', fontWeight: 'bold' }}>
-                                                        {Math.round(ev.prediccion_ia)}%
-                                                    </span>
-                                                    <div className="progress-bar-container" style={{ width: '100%', marginTop: '8px' }}>
-                                                        <div
-                                                            className={`progress-bar ${ev.prediccion_ia > 80 ? 'bg-danger' : ev.prediccion_ia > 50 ? 'bg-warning' : 'bg-success'}`}
-                                                            style={{ width: `${ev.prediccion_ia}%` }}
-                                                        ></div>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <span className="text-muted" style={{ fontSize: '1rem' }}>No disponible</span>
-                                            )}
+                                            <ResumenIA ev={ev} />
                                         </div>
                                     </div>
 
@@ -220,21 +284,37 @@ const LesionDetail = () => {
                                     </div>
 
                                     <div className="eval-image">
-                                        <div className="image-placeholder glass" style={{ background: ev.ruta_imagen ? `url('https://liaaproyectos.uaz.edu.mx/apiprediccion${ev.ruta_imagen.replace('\\', '/')}')` : 'rgba(0,0,0,0.3)', backgroundSize: 'cover', backgroundPosition: 'center', opacity: 0.8 }}>
-                                            {!ev.ruta_imagen && <span className="text-xs text-muted flex-center h-full w-full">Sin Imagen</span>}
-                                        </div>
+                                        {ev.ruta_imagen ? (
+                                            <ImagenProtegida comoFondo idEvaluacion={ev.id_evaluacion} className="image-placeholder glass" style={{ opacity: 0.8 }} />
+                                        ) : (
+                                            <div className="image-placeholder glass" style={{ background: 'rgba(0,0,0,0.3)' }}>
+                                                <span className="text-xs text-muted flex-center h-full w-full">Sin Imagen</span>
+                                            </div>
+                                        )}
                                         <div className="text-center mt-2">
                                             <span className="text-xs text-muted">Imagen Clínica - {formatDate(ev.fecha_evaluacion).split(',')[0]}</span>
                                         </div>
                                     </div>
                                 </div>
 
-                                {(ev.notas_clinicas || ev.requiere_biopsia) && (
+                                {ev.resultado_ia?.fusion && (
+                                    <div className="mt-16 pt-16 border-top">
+                                        <button type="button" className="btn btn-glass btn-sm"
+                                            onClick={() => setExplicacionAbierta(explicacionAbierta === ev.id_evaluacion ? null : ev.id_evaluacion)}>
+                                            {explicacionAbierta === ev.id_evaluacion ? 'Ocultar explicación de la IA' : 'Ver explicación de la IA'}
+                                        </button>
+                                        {explicacionAbierta === ev.id_evaluacion && (
+                                            <div className="mt-16"><ResultadoIA resultado={ev.resultado_ia} idEvaluacion={ev.id_evaluacion} /></div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {(ev.notas_medico || ev.requiere_biopsia) && (
                                     <div className="eval-notes mt-16 pt-16 border-top">
-                                        {ev.notas_clinicas && (
+                                        {ev.notas_medico && (
                                             <>
                                                 <h4 className="text-sm mb-1 text-muted">Notas Clínicas:</h4>
-                                                <p className="text-sm">{ev.notas_clinicas}</p>
+                                                <p className="text-sm">{ev.notas_medico}</p>
                                             </>
                                         )}
                                         {ev.requiere_biopsia && <div className="mt-2 badge badge-maligno" style={{ display: 'inline-block' }}>Requiere Biopsia</div>}

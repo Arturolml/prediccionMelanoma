@@ -152,7 +152,10 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
                                   ? ClipRRect(
                                       borderRadius: BorderRadius.circular(8.0),
                                       child: Image.network(
-                                        '${ApiService.baseUrl}${evaluacion['ruta_imagen']}',
+                                        ApiService.urlImagenEvaluacion(
+                                          evaluacion['id_evaluacion'],
+                                        ),
+                                        headers: ApiService().imagenHeaders,
                                         width: 50,
                                         height: 50,
                                         fit: BoxFit.cover,

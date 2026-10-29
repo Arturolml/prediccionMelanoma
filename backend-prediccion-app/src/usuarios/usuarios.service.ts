@@ -4,6 +4,12 @@ import { UpdateUsuarioDto } from './dto/update-usuario.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 
+// Campos que se devuelven al cliente: nunca password_hash.
+const SIN_HASH = {
+  id_usuario: true, nombre_completo: true, email: true, rol: true, cedula_profesional: true,
+  telefono_contacto: true, activo: true, fecha_creacion: true,
+} as const;
+
 @Injectable()
 export class UsuariosService {
 
@@ -20,12 +26,13 @@ export class UsuariosService {
         rol: dto.rol,
         cedula_profesional: dto.cedula_profesional,
         telefono_contacto: dto.telefono_contacto
-      }
+      },
+      select: SIN_HASH,
     })
   }
 
   async findAll() {
-    return this.prisma.usuarios_sistema.findMany();
+    return this.prisma.usuarios_sistema.findMany({ select: SIN_HASH });
   }
 
   async findOne(id: number) {
@@ -39,13 +46,17 @@ export class UsuariosService {
 
   async update(id: number, dto: UpdateUsuarioDto) {
     const data: any = { ...dto };
+    // El hash solo se calcula aqui: nunca se acepta del cliente (la web lo
+    // mandaba como password_hash y quedaba guardada la contrasena en claro).
+    delete data.password_hash;
     if (data.password) {
       data.password_hash = await bcrypt.hash(data.password, 10);
       delete data.password;
     }
     return this.prisma.usuarios_sistema.update({
       where: { id_usuario: id },
-      data
+      data,
+      select: SIN_HASH,
     });
   }
 
@@ -58,7 +69,8 @@ export class UsuariosService {
   async toggleStatus(id: number, activo: boolean) {
     return this.prisma.usuarios_sistema.update({
       where: { id_usuario: id },
-      data: { activo }
+      data: { activo },
+      select: SIN_HASH,
     });
   }
 }

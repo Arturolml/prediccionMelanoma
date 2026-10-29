@@ -10,10 +10,12 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: prediccion
-      POSTGRES_PASSWORD: mM14cluX8z%DeA
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?define POSTGRES_PASSWORD en .env}
       POSTGRES_DB: prediccion-db
     ports:
-      - "5432:5432" # Para poder conectarte localmente con DBeaver/PgAdmin si lo requieres
+      # Solo en localhost: Docker publica los puertos por encima del firewall del
+      # sistema. Para DBeaver/PgAdmin desde otra maquina, usar un tunel SSH.
+      - "127.0.0.1:5432:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     networks:
@@ -32,11 +34,13 @@ services:
       - db_postgres
     environment:
       # Debe coincidir con las credenciales de arriba y apuntar al nombre del contenedor (db_postgres)
-      DATABASE_URL: "postgresql://prediccion:mM14cluX8z%DeA@db_postgres:5432/prediccion-db?schema=public"
-      JWT_SECRET: "TU_SECRETO_SUPER_SEGURO_PARA_PRODUCCION"
+      DATABASE_URL: "postgresql://prediccion:${POSTGRES_PASSWORD}@db_postgres:5432/prediccion-db?schema=public"
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      # El backend llama a la IA por la red interna de Docker, no por el dominio publico.
+      IA_API_URL: http://api_ia:8000
       PORT: 3007
     ports:
-      - "3008:3007" # Expuesto al host para que tu Nginx Nativo lo alcance (ej. proxy_pass http://localhost:3008)
+      - "127.0.0.1:3008:3007" # Expuesto al host para que tu Nginx Nativo lo alcance (ej. proxy_pass http://localhost:3008)
     volumes:
       - ./uploads:/app/uploads
     networks:
@@ -52,10 +56,15 @@ services:
     container_name: melanoma_ia
     restart: unless-stopped
     ports:
-      - "8001:8000" # Expuesto al host para validaciones, consumible en http://localhost:8001 por Nginx Nativo
+      - "127.0.0.1:8001:8000" # Expuesto al host para validaciones, consumible en http://localhost:8001 por Nginx Nativo
+    environment:
+      ARTEFACTOS_DIR: /app/artefactos
+      IA_DEVICE: cpu
+      # IA_HILOS: "4"   # opcional: limitar los hilos de CPU de PyTorch
     volumes:
-      # Opcional: montar el modelo keras por fuera si planeas actualizarlo sin reconstruir imagen
-      - ./api-prediccion-ai/modelo_cnn__optimizado_280226_final.keras:/app/modelo_cnn__optimizado_280226_final.keras:ro
+      # Pesos y configuracion de los modelos (Fase 14, ~765 MB, con manifiesto de
+      # hashes). No van en git: se copian al servidor en esta carpeta.
+      - ./artefactos_ia/fase14-2026-10-26:/app/artefactos:ro
     networks:
       - melanoma_net
 
@@ -74,7 +83,7 @@ services:
       # IMPORTANTE: Cambialo a tu dominio real.
       VITE_API_URL: "https://liaaproyectos.uaz.edu.mx/apiprediccion"
     ports:
-      - "8081:8080" # Tu nginx local debe apuntar 'proxy_pass http://localhost:8081' a este puerto
+      - "127.0.0.1:8081:8080" # Tu nginx local debe apuntar 'proxy_pass http://localhost:8081' a este puerto
     networks:
       - melanoma_net
 

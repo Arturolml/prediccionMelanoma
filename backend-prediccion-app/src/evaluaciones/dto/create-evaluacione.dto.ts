@@ -12,9 +12,10 @@ export class CreateEvaluacioneDto {
     @IsInt()
     id_usuario_registro!: number;
 
-    @ApiProperty({ example: 2 })
+    @ApiProperty({ example: 2, required: false })
+    @IsOptional()
     @IsInt()
-    id_medico_validador!: number;
+    id_medico_validador?: number;
 
     @ApiProperty({ example: '/uploads/img1.jpg' })
     @IsString()

@@ -31,16 +31,18 @@ class _PacientesScreenState extends State<PacientesScreen> {
     final userId = ApiService().currentUserid;
     if (userId == null) return;
 
+    // El backend autentica el socket con el token de sesión y lo une a la
+    // sala de este usuario (ya no se elige la sala con un userId).
     socket = IO.io(ApiService.baseUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
+      'auth': {'token': ApiService().token},
     });
 
     socket!.connect();
 
     socket!.onConnect((_) {
       print('✅ Socket connected');
-      socket!.emit('join_room', {'userId': userId});
     });
 
     socket!.on('abrir_camara', (_) async {
@@ -63,7 +65,6 @@ class _PacientesScreenState extends State<PacientesScreen> {
         final base64String = base64Encode(bytes);
 
         socket!.emit('foto_capturada', {
-          'userId': userId,
           'imageBase64': 'data:image/jpeg;base64,$base64String',
         });
 
