@@ -1,6 +1,6 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { tipo_rol, usuarios_sistema } from "@prisma/client";
-import { IsEmail, IsNotEmpty, IsString, IsEnum, IsOptional } from "class-validator";
+import { IsBoolean, IsEmail, IsNotEmpty, IsString, IsEnum, IsOptional } from "class-validator";
 
 
 export class CreateUsuarioDto {
@@ -31,5 +31,10 @@ export class CreateUsuarioDto {
     @IsOptional()
     @IsString()
     telefono_contacto?: string;
+
+    @ApiProperty({ example: true, required: false })
+    @IsOptional()
+    @IsBoolean()
+    activo?: boolean;
 
 }

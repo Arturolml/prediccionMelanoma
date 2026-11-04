@@ -1,7 +1,7 @@
-import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException, NotFoundException, Res, Req } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseInterceptors, UploadedFile, UseGuards, BadRequestException, NotFoundException, ParseIntPipe, Res, Req } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
-import { opcionesSubidaImagen, resolverRutaGuardada } from '../archivos/archivos';
+import { borrarSiExiste, opcionesSubidaImagen, resolverRutaGuardada } from '../archivos/archivos';
 import { EvaluacionesService, TIPOS_MAPA, TipoMapa } from './evaluaciones.service';
 import { PacientesService } from '../pacientes/pacientes.service';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
@@ -21,6 +21,18 @@ function numero(valor: string | undefined): number | undefined {
   return valor && Number.isFinite(n) ? n : undefined;
 }
 
+const ANCHO_CAMPO_MAX_MM = 500;
+
+/** Ancho real que abarca la foto, en mm (opcional). */
+function anchoCampo(valor: string | undefined): number | undefined {
+  if (!valor) return undefined;
+  const n = Number(valor);
+  if (!Number.isFinite(n) || n <= 0 || n > ANCHO_CAMPO_MAX_MM) {
+    throw new BadRequestException(`El ancho de la foto debe estar entre 0 y ${ANCHO_CAMPO_MAX_MM} mm.`);
+  }
+  return n;
+}
+
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('evaluaciones')
 export class EvaluacionesController {
@@ -33,6 +45,7 @@ export class EvaluacionesController {
    * Análisis en vivo de una foto, antes de guardar la evaluación. Campos del
    * formulario: imagen (archivo) e id_lesion o id_paciente; sitio_anatomico es
    * opcional (por defecto, el de la lesión). La IA usa edad, sexo y sitio.
+   * ancho_campo_mm (opcional) da la escala para informar el diámetro en mm.
    */
   @Post('predict-live')
   @Roles('medico', 'enfermero')
@@ -44,10 +57,18 @@ export class EvaluacionesController {
     if (!file) {
       throw new BadRequestException('No se proporcionó una imagen para analizar.');
     }
+    let ancho: number | undefined;
+    try {
+      ancho = anchoCampo(body.ancho_campo_mm);
+    } catch (error) {
+      borrarSiExiste(file.path);
+      throw error;
+    }
     return this.evaluacionesService.predictImageLive(file.path, {
       id_lesion: entero(body.id_lesion),
       id_paciente: entero(body.id_paciente),
       sitio_anatomico: body.sitio_anatomico || undefined,
+      ancho_campo_mm: ancho,
     });
   }
 
@@ -64,8 +85,13 @@ export class EvaluacionesController {
       throw new BadRequestException('Falta la imagen de la evaluación.');
     }
     const idLesion = entero(body.id_lesion);
-    if (!idLesion) {
-      throw new BadRequestException('Falta id_lesion.');
+    let ancho: number | undefined;
+    try {
+      if (!idLesion) throw new BadRequestException('Falta id_lesion.');
+      ancho = anchoCampo(body.ancho_campo_mm);
+    } catch (error) {
+      borrarSiExiste(file.path);
+      throw error;
     }
     const usuario = req.user;
     // Solo los campos que llena el usuario: el resultado de la IA lo calcula el
@@ -73,11 +99,12 @@ export class EvaluacionesController {
     // podía escribir cualquier columna). Quién registra sale del token, no del
     // formulario (la app móvil mandaba 1 fijo).
     const dto: CreateEvaluacioneDto = {
-      id_lesion: idLesion,
+      id_lesion: idLesion!,
       id_usuario_registro: +usuario.userId,
       id_medico_validador: usuario.rol === 'medico' ? +usuario.userId : undefined,
       ruta_imagen: file.path, // temporal: el servicio la mueve a la carpeta del paciente
       diametro_mm: numero(body.diametro_mm),
+      ancho_campo_mm: ancho,
       asimetria: body.asimetria === 'true',
       bordes_irregulares: body.bordes_irregulares === 'true',
       color_variable: body.color_variable === 'true',
@@ -92,6 +119,13 @@ export class EvaluacionesController {
       fecha_evaluacion: body.fecha_evaluacion ? new Date(body.fecha_evaluacion) : undefined,
     };
     return this.evaluacionesService.createWithImage(dto, file);
+  }
+
+  /** Vuelve a pedir el análisis de una evaluación que se guardó porque la IA no respondió. */
+  @Post(':id/reanalizar')
+  @Roles('medico', 'enfermero')
+  reanalizar(@Param('id', ParseIntPipe) id: number) {
+    return this.evaluacionesService.reanalizar(id);
   }
 
   @Get()

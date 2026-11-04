@@ -60,6 +60,7 @@ válidos, o 503 si los modelos no cargaron.
 | `sitio` | no | uno de los 16 de abajo; por defecto `unknown` |
 | `politica` | no | `consulta` (por defecto) o `cribado` |
 | `px_por_mm` | no | escala de la foto; sin ella no se informa el diámetro en mm |
+| `ancho_campo_mm` | no | ancho real que abarca la foto, hasta 500 mm; alternativa a `px_por_mm` (no los dos) |
 | `imagen_previa` | no | foto anterior de la misma lesión, para el criterio E |
 | `px_por_mm_previa` | no | escala de la foto anterior |
 
@@ -129,7 +130,10 @@ Respuesta 200 (resumida):
   - `detalle` trae las medidas completas;
   - si no se encuentra la lesión, viene `error` y los criterios en `null`;
   - `evolucion` solo viene si se manda `imagen_previa`;
-  - el diámetro en mm solo viene si se manda `px_por_mm`.
+  - el diámetro en mm solo viene si se manda `px_por_mm` o `ancho_campo_mm`.
+- **`escala`**: `px_por_mm` y `ancho_campo_mm` usados (`null` sin escala). El
+  backend guarda `px_por_mm` y lo reenvía como `px_por_mm_previa` en la
+  siguiente evaluación de la lesión.
 - **`imagenes`**:
   - mapas: superpuestos sobre el recorte central que ven los modelos, de
     384 × 384 px;

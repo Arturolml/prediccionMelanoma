@@ -55,6 +55,7 @@ VARIABLES = ("age", "sex", "localization")
 NOMBRE_VARIABLE = {"age": "edad", "sex": "sexo", "localization": "sitio"}
 SEXOS = ("male", "female", "unknown")
 EDAD_MAXIMA = 120
+ANCHO_CAMPO_MAX_MM = 500    # ancho real maximo que abarca una foto
 LADO_MAPA = 384             # lado de las imagenes de los mapas en la respuesta
 LADO_MAX_CONTORNO = 768     # lado mayor de la imagen con el contorno de la lesion
 ALFA_MAPA = 0.45
@@ -241,6 +242,18 @@ class ServicioIA:
             raise ErrorEntrada(f"{nombre} debe ser un número positivo")
         return v
 
+    def _escala(self, imagen, px_por_mm, ancho_campo_mm):
+        """px por mm de la foto: dado directamente o a partir del ancho real que abarca."""
+        px_por_mm = self._px_por_mm(px_por_mm, "px_por_mm")
+        ancho = self._px_por_mm(ancho_campo_mm, "ancho_campo_mm")
+        if ancho is None:
+            return px_por_mm, None
+        if px_por_mm is not None:
+            raise ErrorEntrada("indique px_por_mm o ancho_campo_mm, no los dos")
+        if ancho > ANCHO_CAMPO_MAX_MM:
+            raise ErrorEntrada(f"ancho_campo_mm fuera de rango (hasta {ANCHO_CAMPO_MAX_MM} mm)")
+        return imagen.size[0] / ancho, ancho
+
     # ------------------------------------------------------------- modelos
     def _fusion(self, imagen, paciente):
         crudos, probs, embs = [], [], []
@@ -342,14 +355,14 @@ class ServicioIA:
         }, med["_mascara"]
 
     # ------------------------------------------------------------ prediccion
-    def predecir(self, imagen, edad=None, sexo=None, sitio=None, politica=None, px_por_mm=None,
+    def predecir(self, imagen, edad=None, sexo=None, sitio=None, politica=None, px_por_mm=None, ancho_campo_mm=None,
                  imagen_previa=None, px_por_mm_previa=None, incluir_imagenes=True):
         """imagen e imagen_previa: PIL.Image. Devuelve el diccionario del contrato de /api/v2/predict."""
         paciente = self.normalizar_paciente(edad, sexo, sitio)
         politica = politica or self.politica_por_defecto
         if politica not in self.politicas:
             raise ErrorEntrada(f"política inválida: {politica!r}; valores: {', '.join(self.politicas)}")
-        px_por_mm = self._px_por_mm(px_por_mm, "px_por_mm")
+        px_por_mm, ancho_campo_mm = self._escala(imagen, px_por_mm, ancho_campo_mm)
         px_por_mm_previa = self._px_por_mm(px_por_mm_previa, "px_por_mm_previa")
         imagen = imagen.convert("RGB")
         imagen_previa = imagen_previa.convert("RGB") if imagen_previa is not None else None
@@ -381,6 +394,7 @@ class ServicioIA:
             "coinciden": bool(coinciden),
             "mensaje": mensaje,
             "metadatos_usados": {"edad": paciente["age"] or None, "sexo": paciente["sex"], "sitio": paciente["localization"]},
+            "escala": {"px_por_mm": px_por_mm, "ancho_campo_mm": ancho_campo_mm},
             "fusion": fusion,
             "qresnet": qresnet,
             "abcde": abcde_res,

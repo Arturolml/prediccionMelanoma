@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { tipo_sexo } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import FormData from 'form-data';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,6 +18,7 @@ export interface ResultadoIA {
   revisar_caso: boolean;
   coinciden: boolean;
   mensaje: string;
+  escala?: { px_por_mm: number | null; ancho_campo_mm: number | null };
   fusion: { prob_maligno: number; umbral: number; sospecha: boolean; [k: string]: unknown };
   qresnet: { prob_maligno: number; umbral: number; sospecha: boolean; [k: string]: unknown };
   abcde: {
@@ -38,13 +39,41 @@ export interface PacienteIA {
 
 const SEXO_IA: Record<tipo_sexo, string> = { M: 'male', F: 'female', Otro: 'unknown' };
 const TIMEOUT_MS = 60_000;
+const POLITICAS = ['consulta', 'cribado'];
+
+// El análisis en vivo y el guardado de una evaluación piden lo mismo: la
+// respuesta se reutiliza si coinciden la foto y todos los datos enviados.
+const CACHE_TTL_MS = 15 * 60_000;
+const CACHE_MAX = 20;
+
+function hashArchivo(ruta: string): string {
+  return createHash('sha256').update(fs.readFileSync(ruta)).digest('hex');
+}
 
 /** Cliente de la API de IA (Fase 14: Fusión + QResNet-Hybrid). */
 @Injectable()
 export class IaService {
   private readonly logger = new Logger(IaService.name);
+  private readonly politica = process.env.IA_POLITICA || undefined;
+  private readonly cache = new Map<string, { resultado: ResultadoIA; vence: number }>();
 
-  constructor(private readonly http: HttpService) { }
+  constructor(private readonly http: HttpService) {
+    if (this.politica && !POLITICAS.includes(this.politica)) {
+      throw new Error(`IA_POLITICA inválida: ${this.politica} (valores: ${POLITICAS.join(', ')})`);
+    }
+  }
+
+  private leerCache(clave: string): ResultadoIA | null {
+    const ahora = Date.now();
+    for (const [k, v] of this.cache) if (v.vence <= ahora) this.cache.delete(k);
+    return this.cache.get(clave)?.resultado ?? null;
+  }
+
+  private guardarCache(clave: string, resultado: ResultadoIA) {
+    // Map conserva el orden de inserción: el primero es el más antiguo.
+    if (this.cache.size >= CACHE_MAX) this.cache.delete(this.cache.keys().next().value as string);
+    this.cache.set(clave, { resultado, vence: Date.now() + CACHE_TTL_MS });
+  }
 
   private url(): string {
     return (process.env.IA_API_URL || 'http://api_ia:8000').replace(/\/+$/, '');
@@ -71,14 +100,30 @@ export class IaService {
     paciente: PacienteIA;
     sitio: SitioAnatomico | string;
     fechaReferencia?: Date;
+    anchoCampoMm?: number;
     rutaImagenPrevia?: string | null;
+    pxPorMmPrevia?: number | null;
   }): Promise<ResultadoIA> {
+    const edad = IaService.edad(opciones.paciente.fecha_nacimiento, opciones.fechaReferencia);
+    const campos: Record<string, string> = {
+      sexo: SEXO_IA[opciones.paciente.sexo] ?? 'unknown',
+      sitio: opciones.sitio || 'unknown',
+      ...(edad !== null ? { edad: String(edad) } : {}),
+      ...(this.politica ? { politica: this.politica } : {}),
+      ...(opciones.anchoCampoMm ? { ancho_campo_mm: String(opciones.anchoCampoMm) } : {}),
+      ...(opciones.rutaImagenPrevia && opciones.pxPorMmPrevia ? { px_por_mm_previa: String(opciones.pxPorMmPrevia) } : {}),
+    };
+    const clave = JSON.stringify([
+      hashArchivo(opciones.rutaImagen),
+      opciones.rutaImagenPrevia ? hashArchivo(opciones.rutaImagenPrevia) : null,
+      Object.entries(campos).sort(),
+    ]);
+    const enCache = this.leerCache(clave);
+    if (enCache) return enCache;
+
     const form = new FormData();
     form.append('image', fs.createReadStream(opciones.rutaImagen));
-    const edad = IaService.edad(opciones.paciente.fecha_nacimiento, opciones.fechaReferencia);
-    if (edad !== null) form.append('edad', String(edad));
-    form.append('sexo', SEXO_IA[opciones.paciente.sexo] ?? 'unknown');
-    form.append('sitio', opciones.sitio || 'unknown');
+    for (const [campo, valor] of Object.entries(campos)) form.append(campo, valor);
     if (opciones.rutaImagenPrevia) form.append('imagen_previa', fs.createReadStream(opciones.rutaImagenPrevia));
 
     try {
@@ -88,6 +133,7 @@ export class IaService {
         maxBodyLength: Infinity,
         maxContentLength: Infinity,
       }));
+      this.guardarCache(clave, respuesta.data);
       return respuesta.data;
     } catch (error: any) {
       const estado = error?.response?.status;

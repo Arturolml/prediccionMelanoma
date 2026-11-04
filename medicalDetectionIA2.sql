@@ -113,7 +113,8 @@ CREATE TABLE evaluaciones (
     resultado_ia JSONB,
     ruta_mapa_fusion VARCHAR(255),
     ruta_mapa_qresnet VARCHAR(255),
-    ruta_contorno_lesion VARCHAR(255)
+    ruta_contorno_lesion VARCHAR(255),
+    ancho_campo_mm NUMERIC(6, 2)
 );
 
 -- 7. ÍNDICES DE RENDIMIENTO (Para búsquedas rápidas)

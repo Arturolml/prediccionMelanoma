@@ -31,7 +31,7 @@ import numpy as np
 import torch
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from servicio_ia import ErrorEntrada, ServicioIA
 
@@ -99,7 +99,8 @@ def _leer_imagen(archivo: UploadFile, nombre: str):
         raise ErrorEntrada(f"{nombre}: no es una imagen válida (JPEG, PNG o WEBP)") from None
     if imagen.format not in ("JPEG", "PNG", "WEBP"):
         raise ErrorEntrada(f"{nombre}: formato {imagen.format} no admitido (JPEG, PNG o WEBP)")
-    return imagen
+    # Orientacion EXIF (fotos de celular): la imagen se analiza y se mide como se ve.
+    return ImageOps.exif_transpose(imagen)
 
 
 def _predecir(**kw):
@@ -138,6 +139,7 @@ def predict_v2(
     sitio: Optional[str] = Form(None),
     politica: Optional[str] = Form(None),
     px_por_mm: Optional[str] = Form(None),
+    ancho_campo_mm: Optional[str] = Form(None),
     imagen_previa: Optional[UploadFile] = File(None),
     px_por_mm_previa: Optional[str] = Form(None),
 ):
@@ -147,7 +149,7 @@ def predict_v2(
     except ErrorEntrada as e:
         return _error(400, str(e))
     res, err = _predecir(imagen=img, edad=edad, sexo=sexo, sitio=sitio, politica=politica, px_por_mm=px_por_mm,
-                         imagen_previa=previa, px_por_mm_previa=px_por_mm_previa)
+                         ancho_campo_mm=ancho_campo_mm, imagen_previa=previa, px_por_mm_previa=px_por_mm_previa)
     return err or res
 
 

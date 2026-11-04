@@ -36,6 +36,8 @@ model evaluaciones {
   ruta_mapa_fusion                                                    String?           @db.VarChar(255)
   ruta_mapa_qresnet                                                   String?           @db.VarChar(255)
   ruta_contorno_lesion                                                String?           @db.VarChar(255)
+  // Ancho real que abarca la foto; de ahí sale la escala para el diámetro en mm.
+  ancho_campo_mm                                                      Decimal?          @db.Decimal(6, 2)
   lesiones                                                            lesiones?         @relation(fields: [id_lesion], references: [id_lesion], onDelete: Cascade, onUpdate: NoAction)
   usuarios_sistema_evaluaciones_id_medico_validadorTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_medico_validadorTousuarios_sistema", fields: [id_medico_validador], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
   usuarios_sistema_evaluaciones_id_usuario_registroTousuarios_sistema usuarios_sistema? @relation("evaluaciones_id_usuario_registroTousuarios_sistema", fields: [id_usuario_registro], references: [id_usuario], onDelete: NoAction, onUpdate: NoAction)
