@@ -5,13 +5,30 @@ import 'package:image_picker/image_picker.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
 import 'package:flutter_app_1/constants/sitios.dart';
+import 'package:flutter_app_1/presentation/widgets/alertas_clinicas.dart';
 import 'package:flutter_app_1/presentation/widgets/resultado_ia.dart';
 import 'package:flutter_app_1/services/api_service.dart';
 
 class CrearEvaluacionScreen extends StatefulWidget {
   final int? pacienteId; // Optional for now, to support folder structure
 
-  const CrearEvaluacionScreen({super.key, this.pacienteId});
+  /// Para las alertas clínicas (antecedentes del paciente).
+  final Map<String, dynamic>? paciente;
+
+  /// Seguimiento: evaluación nueva de una lesión existente. Sin esto se crea
+  /// una lesión nueva. La IA compara con la evaluación anterior (criterio E).
+  final int? lesionId;
+  final String? sitioLesion;
+  final dynamic idEvaluacionPrevia;
+
+  const CrearEvaluacionScreen({
+    super.key,
+    this.pacienteId,
+    this.paciente,
+    this.lesionId,
+    this.sitioLesion,
+    this.idEvaluacionPrevia,
+  });
 
   @override
   State<CrearEvaluacionScreen> createState() => _CrearEvaluacionScreenState();
@@ -26,6 +43,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
   // final _diagnosticoMedicoController = TextEditingController(); // Removed in favor of Dropdown
   final _notasMedicoController = TextEditingController();
   final _notasUbicacionController = TextEditingController();
+  final _anchoCampoController = TextEditingController();
 
   // State Variables
   final DateTime _fecha = DateTime.now();
@@ -35,7 +53,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
   String? _diagnosticoMedico; // Dropdown value
 
   // Uno de los 16 sitios del modelo de Fusión (zona_cuerpo se llena con su etiqueta).
-  String? _sitioAnatomico;
+  late String? _sitioAnatomico = widget.sitioLesion;
   // Resultado del análisis en vivo (API de IA v2).
   Map<String, dynamic>? _resultadoIA;
 
@@ -89,6 +107,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     // _diagnosticoMedicoController.dispose();
     _notasMedicoController.dispose();
     _notasUbicacionController.dispose();
+    _anchoCampoController.dispose();
     super.dispose();
   }
 
@@ -106,6 +125,18 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     });
   }
 
+  /// Ancho real que abarca la foto; null si no se indicó. Lanza FormatException
+  /// si no es un número entre 0 y 500.
+  double? _anchoCampo() {
+    final texto = _anchoCampoController.text.trim().replaceAll(',', '.');
+    if (texto.isEmpty) return null;
+    final v = double.tryParse(texto);
+    if (v == null || v <= 0 || v > 500) {
+      throw const FormatException('Ancho de la foto: entre 0 y 500 mm');
+    }
+    return v;
+  }
+
   Future<void> _runPredictLive() async {
     if (_storedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -113,6 +144,21 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
           content: Text('Tome una foto primero para analizar con IA'),
         ),
       );
+      return;
+    }
+    if (_sitioAnatomico == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Seleccione el sitio anatómico antes de analizar: la IA lo usa en su resultado.'),
+        ),
+      );
+      return;
+    }
+    final double? ancho;
+    try {
+      ancho = _anchoCampo();
+    } on FormatException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
       return;
     }
 
@@ -123,15 +169,17 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
     final api = ApiService();
     final result = await api.predictEvaluacionLive(
       _storedImage!,
-      idPaciente: widget.pacienteId,
+      idPaciente: widget.lesionId == null ? widget.pacienteId : null,
+      idLesion: widget.lesionId,
       sitioAnatomico: _sitioAnatomico,
+      anchoCampoMm: ancho,
     );
+
+    if (!mounted) return;
 
     setState(() {
       _isLoadingIA = false;
     });
-
-    if (!mounted) return;
 
     if (result != null && result['success'] == true) {
       // Los criterios ABCDE se prellenan con la sugerencia de la IA; el médico
@@ -167,12 +215,21 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
         return;
       }
 
+      final double? ancho;
+      try {
+        ancho = _anchoCampo();
+      } on FormatException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        return;
+      }
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Procesando evaluación...')));
 
-      // 1. Crear Lesión (Asumiendo nueva lesión por evaluación para este flujo simplificado)
-      // En un flujo real, seleccionaríamos una lesión existente o crearíamos una nueva explícitamente.
+      final api = ApiService();
+
+      // 1. La lesión: la existente (seguimiento) o una nueva.
       final pacienteId =
           widget.pacienteId ??
           1; // Fallback to 1 if null (debiera venir de argumento)
@@ -185,9 +242,15 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
         'notas_ubicacion': _notasUbicacionController.text,
       };
 
-      final api = ApiService();
-
-      final lesionId = await api.createLesion(lesionData);
+      final int? lesionId;
+      if (widget.lesionId != null) {
+        lesionId = widget.lesionId;
+        if (_sitioAnatomico != null && _sitioAnatomico != widget.sitioLesion) {
+          await api.updateLesionSitio(lesionId!, _sitioAnatomico!);
+        }
+      } else {
+        lesionId = await api.createLesion(lesionData);
+      }
 
       if (lesionId == null) {
         if (!mounted) return;
@@ -207,6 +270,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
         'bordes_irregulares': _bordesIrregulares,
         'color_variable': _colorVariable,
         if (diametro != null) 'diametro_mm': diametro,
+        if (ancho != null) 'ancho_campo_mm': ancho,
         'evolucion_cambios': _evolucionCambios,
         'sintoma_sangrado': _sintomaSangrado,
         'sintoma_picazon': _sintomaPicazon,
@@ -347,6 +411,21 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                 ],
               ),
 
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _anchoCampoController,
+                decoration: const InputDecoration(
+                  labelText: 'Ancho real que abarca la foto (mm, opcional)',
+                  helperText: 'De lado a lado de la foto ya orientada. Sin este dato, la IA no informa el diámetro en mm.',
+                  helperMaxLines: 2,
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) {
+                  if (_resultadoIA != null) setState(() => _resultadoIA = null); // el análisis usó la escala anterior
+                },
+              ),
+
               if (_resultadoIA != null) ...[
                 const SizedBox(height: 16),
                 const Text(
@@ -354,7 +433,11 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 ),
                 const Divider(),
-                ResultadoIAView(resultado: _resultadoIA!),
+                ResultadoIAView(
+                  resultado: _resultadoIA!,
+                  idEvaluacionPrevia: widget.idEvaluacionPrevia,
+                  fotoActual: _storedImage,
+                ),
               ],
 
               const SizedBox(height: 16),
@@ -430,6 +513,7 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                   labelText: 'D - Diámetro (mm)',
                   border: OutlineInputBorder(),
                 ),
+                onChanged: (_) => setState(() {}), // actualiza las alertas clínicas
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -467,6 +551,15 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
                 title: const Text('Ulceración'),
                 value: _sintomaUlceracion,
                 onChanged: (v) => setState(() => _sintomaUlceracion = v!),
+              ),
+              AlertasClinicasView(
+                paciente: widget.paciente,
+                evaluacion: {
+                  'sintoma_sangrado': _sintomaSangrado,
+                  'sintoma_ulceracion': _sintomaUlceracion,
+                  'evolucion_cambios': _evolucionCambios,
+                  'diametro_mm': _diametroController.text,
+                },
               ),
 
               // Evaluación Médica

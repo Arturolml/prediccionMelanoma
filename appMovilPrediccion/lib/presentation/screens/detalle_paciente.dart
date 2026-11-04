@@ -44,6 +44,46 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
     }
   }
 
+  /// Evaluación anterior de la misma lesión (la lista viene de la más reciente
+  /// a la más antigua).
+  dynamic _idEvaluacionAnterior(int indice) {
+    final idLesion = evaluaciones[indice]['id_lesion'];
+    for (final e in evaluaciones.skip(indice + 1)) {
+      if (e['id_lesion'] == idLesion) return e['id_evaluacion'];
+    }
+    return null;
+  }
+
+  /// La evaluación más reciente de una lesión: contra ella compara la IA.
+  Map<String, dynamic> _ultimaDeLaLesion(dynamic idLesion) =>
+      evaluaciones.firstWhere((e) => e['id_lesion'] == idLesion);
+
+  Future<void> _nuevaEvaluacion({Map<String, dynamic>? deEvaluacion}) async {
+    final lesion = deEvaluacion?['lesiones'] as Map<String, dynamic>?;
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CrearEvaluacionScreen(
+          pacienteId: widget.patient['id_paciente'] is int
+              ? widget.patient['id_paciente']
+              : int.tryParse(widget.patient['id_paciente'].toString()),
+          paciente: widget.patient,
+          lesionId: deEvaluacion?['id_lesion'] as int?,
+          sitioLesion: lesion?['sitio_anatomico'] as String?,
+          idEvaluacionPrevia: deEvaluacion?['id_evaluacion'],
+        ),
+      ),
+    );
+
+    if (result != null && result is Map<String, dynamic>) {
+      if (!mounted) return;
+      _addEvaluacion(result);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Evaluación agregada')),
+      );
+    }
+  }
+
   void _addEvaluacion(Map<String, dynamic> newEvaluacion) {
     _loadEvaluaciones(); // Refresh from API to get full data
   }
@@ -209,12 +249,29 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
                                                 builder: (context) =>
                                                     DetalleEvaluacionScreen(
                                                       evaluacion: evaluacion,
+                                                      paciente: widget.patient,
+                                                      idEvaluacionPrevia:
+                                                          _idEvaluacionAnterior(index),
                                                     ),
                                               ),
-                                            );
+                                            ).then((_) => _loadEvaluaciones());
                                           },
                                         ),
                                       ),
+                                      if (evaluacion['id_lesion'] != null)
+                                        Center(
+                                          child: TextButton.icon(
+                                            icon: const Icon(Icons.update),
+                                            label: const Text(
+                                              'Nueva evaluación de esta lesión',
+                                            ),
+                                            onPressed: () => _nuevaEvaluacion(
+                                              deEvaluacion: _ultimaDeLaLesion(
+                                                evaluacion['id_lesion'],
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                     ],
                                   ),
                                 ),
@@ -229,26 +286,8 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          final result = await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => CrearEvaluacionScreen(
-                pacienteId: widget.patient['id_paciente'] is int
-                    ? widget.patient['id_paciente']
-                    : int.tryParse(widget.patient['id_paciente'].toString()),
-              ),
-            ),
-          );
-
-          if (result != null && result is Map<String, dynamic>) {
-            if (!context.mounted) return;
-            _addEvaluacion(result);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Evaluación agregada')),
-            );
-          }
-        },
+        tooltip: 'Nueva lesión',
+        onPressed: () => _nuevaEvaluacion(),
         child: const Icon(Icons.add_comment),
       ),
     );

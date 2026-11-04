@@ -293,7 +293,41 @@ class ApiService {
     }
   }
 
+  /// Corrige el sitio anatómico de una lesión existente.
+  Future<bool> updateLesionSitio(int id, String sitioAnatomico) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/lesiones/$id'),
+        headers: _authHeaders,
+        body: jsonEncode({'sitio_anatomico': sitioAnatomico}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Excepción actualizando lesión: $e');
+      return false;
+    }
+  }
+
   // --- Evaluaciones (con Imagen) ---
+
+  /// Pide el análisis de una evaluación que se guardó porque la IA no respondió.
+  /// Devuelve la evaluación actualizada o null si la IA sigue sin responder.
+  Future<Map<String, dynamic>?> reanalizarEvaluacion(dynamic id) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/evaluaciones/$id/reanalizar'),
+        headers: _authHeaders,
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      print('❌ Error reanalizando evaluación: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      print('❌ Excepción reanalizando evaluación: $e');
+      return null;
+    }
+  }
 
   Future<bool> createEvaluacion(
     Map<String, dynamic> data,
@@ -487,6 +521,7 @@ class ApiService {
     int? idPaciente,
     int? idLesion,
     String? sitioAnatomico,
+    double? anchoCampoMm,
   }) async {
     try {
       var request = http.MultipartRequest(
@@ -500,6 +535,9 @@ class ApiService {
       if (idPaciente != null) request.fields['id_paciente'] = '$idPaciente';
       if (sitioAnatomico != null) {
         request.fields['sitio_anatomico'] = sitioAnatomico;
+      }
+      if (anchoCampoMm != null) {
+        request.fields['ancho_campo_mm'] = '$anchoCampoMm';
       }
 
       var stream = http.ByteStream(imageFile.openRead());

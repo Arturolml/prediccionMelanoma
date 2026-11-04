@@ -1,11 +1,43 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app_1/presentation/widgets/alertas_clinicas.dart';
 import 'package:flutter_app_1/presentation/widgets/resultado_ia.dart';
 import 'package:flutter_app_1/services/api_service.dart';
 
-class DetalleEvaluacionScreen extends StatelessWidget {
+class DetalleEvaluacionScreen extends StatefulWidget {
   final Map<String, dynamic> evaluacion;
+  final Map<String, dynamic>? paciente;
+  final dynamic idEvaluacionPrevia;
 
-  const DetalleEvaluacionScreen({super.key, required this.evaluacion});
+  const DetalleEvaluacionScreen({
+    super.key,
+    required this.evaluacion,
+    this.paciente,
+    this.idEvaluacionPrevia,
+  });
+
+  @override
+  State<DetalleEvaluacionScreen> createState() => _DetalleEvaluacionScreenState();
+}
+
+class _DetalleEvaluacionScreenState extends State<DetalleEvaluacionScreen> {
+  late Map<String, dynamic> evaluacion = widget.evaluacion;
+  bool _reanalizando = false;
+
+  /// Para las evaluaciones que se guardaron porque la IA no respondió.
+  Future<void> _reanalizar() async {
+    setState(() => _reanalizando = true);
+    final actualizada = await ApiService().reanalizarEvaluacion(evaluacion['id_evaluacion']);
+    if (!mounted) return;
+    setState(() {
+      _reanalizando = false;
+      if (actualizada != null) evaluacion = actualizada;
+    });
+    if (actualizada == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('La IA sigue sin responder. Intente de nuevo más tarde.')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,6 +156,15 @@ class DetalleEvaluacionScreen extends StatelessWidget {
                     _formatDate(evaluacion['fecha_evaluacion']),
                   ),
                   _buildInfoRow('Predicción IA (Fusión):', _textoPrediccion()),
+                  if (evaluacion['prediccion_ia'] == null && evaluacion['id_evaluacion'] != null)
+                    Center(
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.refresh),
+                        label: Text(_reanalizando ? 'Analizando...' : 'Analizar ahora'),
+                        onPressed: _reanalizando ? null : _reanalizar,
+                      ),
+                    ),
+                  AlertasClinicasView(paciente: widget.paciente, evaluacion: evaluacion),
                   _buildInfoRow(
                     'Biopsia Requerida:',
                     evaluacion['requiere_biopsia'] == true ? 'SÍ' : 'NO',
@@ -160,6 +201,7 @@ class DetalleEvaluacionScreen extends StatelessWidget {
                         evaluacion['resultado_ia'],
                       ),
                       idEvaluacion: evaluacion['id_evaluacion'],
+                      idEvaluacionPrevia: widget.idEvaluacionPrevia,
                     ),
                   ],
 
