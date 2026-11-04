@@ -5,6 +5,7 @@ import { io } from 'socket.io-client';
 import { api, getToken } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import ResultadoIA from '../components/ResultadoIA';
+import AlertasClinicas from '../components/AlertasClinicas';
 import { SITIOS_ANATOMICOS, etiquetaSitio } from '../constants/sitios';
 import './CrearEvaluacion.css';
 
@@ -26,6 +27,7 @@ const CrearEvaluacion = () => {
 
         // Datos de Evaluación
         ruta_imagen: '',
+        ancho_campo_mm: '',
         asimetria: false,
         bordes_irregulares: false,
         color_variable: false,
@@ -48,6 +50,9 @@ const CrearEvaluacion = () => {
     const [isLoadingIA, setIsLoadingIA] = useState(false);
     const [resultadoIA, setResultadoIA] = useState(null);
     const [lesion, setLesion] = useState(null);
+    const [paciente, setPaciente] = useState(null);
+    const [idEvaluacionPrevia, setIdEvaluacionPrevia] = useState(null);
+    const [fotoUrl, setFotoUrl] = useState(null);
     const socketRef = useRef(null);
 
     // Nueva evaluación de una lesión existente: se usa su sitio anatómico (las
@@ -60,7 +65,28 @@ const CrearEvaluacion = () => {
                 setFormData(prev => ({ ...prev, sitio_anatomico: l.sitio_anatomico || 'unknown' }));
             })
             .catch(() => setError('No se pudo cargar la lesión.'));
+        // La API ordena de la más reciente a la más antigua.
+        api.evaluaciones.getAll({ id_lesion: id })
+            .then(evs => setIdEvaluacionPrevia(evs?.[0]?.id_evaluacion ?? null))
+            .catch(() => setIdEvaluacionPrevia(null));
     }, [id, isFromPaciente]);
+
+    // Antecedentes del paciente para las alertas clínicas.
+    const idPaciente = isFromPaciente ? id : lesion?.id_paciente;
+    useEffect(() => {
+        if (!idPaciente) return;
+        api.pacientes.getById(idPaciente).then(setPaciente).catch(() => setPaciente(null));
+    }, [idPaciente]);
+
+    useEffect(() => {
+        if (!selectedFile) {
+            setFotoUrl(null);
+            return undefined;
+        }
+        const url = URL.createObjectURL(selectedFile);
+        setFotoUrl(url);
+        return () => URL.revokeObjectURL(url);
+    }, [selectedFile]);
 
     useEffect(() => {
         if (!currentUser?.id_usuario) return;
@@ -113,7 +139,8 @@ const CrearEvaluacion = () => {
 
     const handleChange = (e) => {
         const { name, value, type, checked } = e.target;
-        if (name === 'sitio_anatomico') setResultadoIA(null); // el análisis usó el sitio anterior
+        // El análisis usó el sitio o la escala anteriores.
+        if (name === 'sitio_anatomico' || name === 'ancho_campo_mm') setResultadoIA(null);
         setFormData(prev => ({
             ...prev,
             [name]: type === 'checkbox' ? checked : value
@@ -132,6 +159,10 @@ const CrearEvaluacion = () => {
             setError('Primero selecciona o toma una foto para analizarla con IA.');
             return;
         }
+        if (!formData.sitio_anatomico) {
+            setError('Selecciona el sitio anatómico antes de analizar: la IA lo usa en su resultado.');
+            return;
+        }
 
         setIsLoadingIA(true);
         setError('');
@@ -141,7 +172,8 @@ const CrearEvaluacion = () => {
             const data = new FormData();
             data.append('imagen', selectedFile);
             data.append(isFromPaciente ? 'id_paciente' : 'id_lesion', id);
-            if (formData.sitio_anatomico) data.append('sitio_anatomico', formData.sitio_anatomico);
+            data.append('sitio_anatomico', formData.sitio_anatomico);
+            if (formData.ancho_campo_mm) data.append('ancho_campo_mm', formData.ancho_campo_mm);
 
             const result = await api.evaluaciones.predictLive(data);
 
@@ -341,6 +373,22 @@ const CrearEvaluacion = () => {
                                     )}
                                 </div>
 
+                                <div className="form-group mt-16">
+                                    <label className="form-label">Ancho real que abarca la foto (mm)</label>
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0.1"
+                                        max="500"
+                                        name="ancho_campo_mm"
+                                        value={formData.ancho_campo_mm}
+                                        onChange={handleChange}
+                                        className="form-input"
+                                        placeholder="Ej. 20"
+                                    />
+                                    <span className="text-xs text-muted">Opcional, de lado a lado de la foto ya orientada (campo del dermatoscopio o regla). Sin este dato, la IA no informa el diámetro en mm.</span>
+                                </div>
+
                                 {selectedFile && (
                                     <button
                                         type="button"
@@ -358,7 +406,7 @@ const CrearEvaluacion = () => {
                             <div className="form-section">
                                 <h3 className="section-title"><BrainCircuit size={18} /> Análisis IA</h3>
                                 {resultadoIA ? (
-                                    <ResultadoIA resultado={resultadoIA} />
+                                    <ResultadoIA resultado={resultadoIA} idEvaluacionPrevia={idEvaluacionPrevia} fotoActualUrl={fotoUrl} />
                                 ) : (
                                     <div className="ai-notice-box glass">
                                         <BrainCircuit size={24} className="text-primary mb-8" />
@@ -463,6 +511,7 @@ const CrearEvaluacion = () => {
                                         Ulceración
                                     </label>
                                 </div>
+                                <AlertasClinicas paciente={paciente} evaluacion={formData} />
                             </div>
 
                             <div className="form-section">

@@ -4,6 +4,8 @@ import { ArrowLeft, Calendar, CheckCircle, AlertTriangle, ShieldAlert, Activity,
 import { api } from '../services/api';
 import ImagenProtegida from '../components/ImagenProtegida';
 import ResultadoIA from '../components/ResultadoIA';
+import AlertasClinicas from '../components/AlertasClinicas';
+import { useAuth } from '../context/AuthContext';
 import { estiloDecision } from '../constants/decision';
 import { SITIOS_ANATOMICOS, etiquetaSitio } from '../constants/sitios';
 import './LesionDetail.css';
@@ -94,6 +96,23 @@ const LesionDetail = () => {
     const [explicacionAbierta, setExplicacionAbierta] = useState(null);
     const [editandoSitio, setEditandoSitio] = useState(false);
     const [sitio, setSitio] = useState('unknown');
+    const [paciente, setPaciente] = useState(null);
+    const [reanalizando, setReanalizando] = useState(null);
+    const [errorReanalisis, setErrorReanalisis] = useState('');
+    const { isAdmin } = useAuth();
+
+    const reanalizar = async (idEvaluacion) => {
+        setReanalizando(idEvaluacion);
+        setErrorReanalisis('');
+        try {
+            const actualizada = await api.evaluaciones.reanalizar(idEvaluacion);
+            setEvaluaciones(prev => prev.map(e => (e.id_evaluacion === idEvaluacion ? actualizada : e)));
+        } catch {
+            setErrorReanalisis('La IA sigue sin responder. Intente de nuevo más tarde.');
+        } finally {
+            setReanalizando(null);
+        }
+    };
 
     const guardarSitio = async () => {
         try {
@@ -112,6 +131,9 @@ const LesionDetail = () => {
                 const fetchedLesion = await api.lesiones.getById(id);
                 setLesion(fetchedLesion);
                 setSitio(fetchedLesion.sitio_anatomico || 'unknown');
+                if (fetchedLesion.id_paciente) {
+                    api.pacientes.getById(fetchedLesion.id_paciente).then(setPaciente).catch(() => setPaciente(null));
+                }
 
                 // Fetch evaluaciones for this lesion
                 const fetchedEvals = await api.evaluaciones.getAll({ id_lesion: id });
@@ -237,7 +259,7 @@ const LesionDetail = () => {
                         No hay evaluaciones registradas para esta lesión.
                     </div>
                 ) : (
-                    evaluaciones.map((ev) => (
+                    evaluaciones.map((ev, indice) => (
                         <div key={ev.id_evaluacion} className="timeline-item">
                             <div className="timeline-marker"></div>
                             <div className="timeline-content glass-card">
@@ -255,6 +277,14 @@ const LesionDetail = () => {
                                         <div className="ai-label">Predicción IA (Fusión)</div>
                                         <div className="ai-score">
                                             <ResumenIA ev={ev} />
+                                            {ev.prediccion_ia == null && !isAdmin && (
+                                                <div className="mt-2">
+                                                    <button type="button" className="btn btn-glass btn-sm" disabled={reanalizando === ev.id_evaluacion} onClick={() => reanalizar(ev.id_evaluacion)}>
+                                                        {reanalizando === ev.id_evaluacion ? 'Analizando...' : 'Analizar ahora'}
+                                                    </button>
+                                                    {errorReanalisis && <div className="text-xs ria-advertencia">{errorReanalisis}</div>}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
 
@@ -304,10 +334,12 @@ const LesionDetail = () => {
                                             {explicacionAbierta === ev.id_evaluacion ? 'Ocultar explicación de la IA' : 'Ver explicación de la IA'}
                                         </button>
                                         {explicacionAbierta === ev.id_evaluacion && (
-                                            <div className="mt-16"><ResultadoIA resultado={ev.resultado_ia} idEvaluacion={ev.id_evaluacion} /></div>
+                                            <div className="mt-16"><ResultadoIA resultado={ev.resultado_ia} idEvaluacion={ev.id_evaluacion} idEvaluacionPrevia={evaluaciones[indice + 1]?.id_evaluacion} /></div>
                                         )}
                                     </div>
                                 )}
+
+                                <AlertasClinicas paciente={paciente} evaluacion={ev} />
 
                                 {(ev.notas_medico || ev.requiere_biopsia) && (
                                     <div className="eval-notes mt-16 pt-16 border-top">

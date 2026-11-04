@@ -10,6 +10,12 @@ const NOMBRE_COLOR = {
     rojo: 'rojo', azul_gris: 'azul-gris', blanco: 'blanco',
 };
 
+/** Las semillas del ensamble quedan a ambos lados del umbral: en los hospitales
+ * externos, esos casos fallan de 3 a 5 veces más que los demás. */
+const semillasDiscrepan = ({ prob_por_semilla: p, umbral }) => (
+    Array.isArray(p) && p.length > 1 && Math.min(...p) < umbral && Math.max(...p) >= umbral
+);
+
 const Opinion = ({ titulo, subtitulo, datos }) => (
     <div className={`ria-opinion ${datos.sospecha ? 'ria-sospecha' : 'ria-sin-sospecha'}`}>
         <div className="ria-opinion-titulo">{titulo}</div>
@@ -20,17 +26,57 @@ const Opinion = ({ titulo, subtitulo, datos }) => (
             <div className="ria-barra-umbral" style={{ left: pct(datos.umbral) }} title={`Umbral ${pct(datos.umbral)}`} />
         </div>
         <div className="text-xs text-muted">umbral {pct(datos.umbral)} · {datos.sospecha ? 'marca sospecha' : 'no marca sospecha'}</div>
+        {Array.isArray(datos.prob_por_semilla) && (
+            <div className="text-xs text-muted">
+                semillas: {pct(Math.min(...datos.prob_por_semilla))} a {pct(Math.max(...datos.prob_por_semilla))}
+            </div>
+        )}
+        {semillasDiscrepan(datos) && (
+            <div className="text-xs ria-advertencia"><AlertTriangle size={12} /> Resultado inestable: las semillas no coinciden</div>
+        )}
     </div>
 );
 
-const Mapa = ({ titulo, base64, ruta }) => (
-    <figure className="ria-mapa">
-        {base64
-            ? <img src={`data:image/png;base64,${base64}`} alt={titulo} />
-            : <ImagenProtegida ruta={ruta} alt={titulo} />}
-        <figcaption className="text-xs text-muted">{titulo}</figcaption>
-    </figure>
+const Mapa = ({ titulo, base64, ruta }) => {
+    if (!base64 && !ruta) return null; // análisis en vivo sin ese mapa (no se encontró la lesión)
+    return (
+        <figure className="ria-mapa">
+            {base64
+                ? <img src={`data:image/png;base64,${base64}`} alt={titulo} />
+                : <ImagenProtegida ruta={ruta} alt={titulo} />}
+            <figcaption className="text-xs text-muted">{titulo}</figcaption>
+        </figure>
+    );
+};
+
+/** La misma lesión en la evaluación anterior y en esta, lado a lado. */
+const Comparacion = ({ idEvaluacionPrevia, idEvaluacion, fotoActualUrl }) => (
+    <div className="ria-bloque">
+        <h4>Comparación con la evaluación anterior</h4>
+        <div className="ria-mapas">
+            <figure className="ria-mapa">
+                <ImagenProtegida idEvaluacion={idEvaluacionPrevia} alt="Evaluación anterior" />
+                <figcaption className="text-xs text-muted">Anterior</figcaption>
+            </figure>
+            <figure className="ria-mapa">
+                {fotoActualUrl
+                    ? <img src={fotoActualUrl} alt="Foto actual" />
+                    : <ImagenProtegida idEvaluacion={idEvaluacion} alt="Esta evaluación" />}
+                <figcaption className="text-xs text-muted">Esta evaluación</figcaption>
+            </figure>
+        </div>
+    </div>
 );
+
+/** Texto del criterio E con la unidad en que se pudo medir el cambio. */
+const textoEvolucion = (e) => {
+    if (!e) return 'sin evaluación anterior de esta lesión';
+    if (e.error) return e.error;
+    const signo = e.cambio_diametro_pct >= 0 ? '+' : '';
+    const colores = e.colores_nuevos?.length ? `, colores nuevos: ${e.colores_nuevos.map(c => NOMBRE_COLOR[c] || c).join(', ')}` : '';
+    const nota = e.unidad === 'mm' ? ` (${e.diametro_previo.toFixed(1)} → ${e.diametro_actual.toFixed(1)} mm)` : ' (sin escala en las dos fotos: comparable solo con el mismo encuadre)';
+    return `diámetro ${signo}${e.cambio_diametro_pct}%${nota}${colores}`;
+};
 
 const AporteMetadatos = ({ fusion, metadatos }) => {
     const aportes = fusion.aporte_metadatos || {};
@@ -74,10 +120,8 @@ const Abcde = ({ abcde }) => {
         ['A · Asimetría', si(abcde.asimetria)],
         ['B · Borde irregular', si(abcde.bordes_irregulares)],
         ['C · Color', `${abcde.n_colores} de 6${abcde.colores?.length ? ` (${abcde.colores.map(c => NOMBRE_COLOR[c] || c).join(', ')})` : ''}${abcde.color_variable ? ' · multicolor' : ''}`],
-        ['D · Diámetro', abcde.diametro_mm != null ? `${abcde.diametro_mm.toFixed(1)} mm${abcde.diametro_mayor_6_mm ? ' (> 6 mm)' : ''}` : 'sin escala en la foto'],
-        ['E · Evolución', !e ? 'sin evaluación anterior de esta lesión'
-            : e.error ? e.error
-                : `diámetro ${e.cambio_diametro_pct >= 0 ? '+' : ''}${e.cambio_diametro_pct}%${e.colores_nuevos?.length ? `, colores nuevos: ${e.colores_nuevos.map(c => NOMBRE_COLOR[c] || c).join(', ')}` : ''}`],
+        ['D · Diámetro', abcde.diametro_mm != null ? `${abcde.diametro_mm.toFixed(1)} mm${abcde.diametro_mayor_6_mm ? ' (> 6 mm)' : ''}` : 'sin escala: indique el ancho de la foto'],
+        ['E · Evolución', textoEvolucion(e)],
     ];
     return (
         <div className="ria-bloque">
@@ -100,11 +144,11 @@ const Abcde = ({ abcde }) => {
  * - Evaluación guardada: `resultado` es `resultado_ia` (sin imágenes) y los
  *   mapas se piden al backend con `idEvaluacion`.
  */
-const ResultadoIA = ({ resultado, idEvaluacion }) => {
+const ResultadoIA = ({ resultado, idEvaluacion, idEvaluacionPrevia, fotoActualUrl }) => {
     if (!resultado?.fusion) return null;
     const decision = estiloDecision(resultado.decision);
     const imgs = resultado.imagenes || {};
-    const rutaMapa = (tipo) => `/evaluaciones/${idEvaluacion}/mapa/${tipo}`;
+    const rutaMapa = (tipo) => (idEvaluacion ? `/evaluaciones/${idEvaluacion}/mapa/${tipo}` : null);
     const conMapas = resultado.imagenes || idEvaluacion;
     return (
         <div className="ria">
@@ -139,10 +183,14 @@ const ResultadoIA = ({ resultado, idEvaluacion }) => {
 
             <AporteMetadatos fusion={resultado.fusion} metadatos={resultado.metadatos_usados} />
             <Abcde abcde={resultado.abcde} />
+            {idEvaluacionPrevia && resultado.abcde?.evolucion && (
+                <Comparacion idEvaluacionPrevia={idEvaluacionPrevia} idEvaluacion={idEvaluacion} fotoActualUrl={fotoActualUrl} />
+            )}
 
             <p className="text-xs text-muted ria-pie">
                 {resultado.advertencia_uso_clinico || 'Herramienta de apoyo a la decisión; no sustituye la evaluación dermatológica.'}
                 {resultado.version_modelos ? ` Modelos: ${resultado.version_modelos}.` : ''}
+                {resultado.politica ? ` Política: ${resultado.politica}.` : ''}
             </p>
         </div>
     );
