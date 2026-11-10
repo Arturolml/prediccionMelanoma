@@ -178,6 +178,28 @@
   margin: 6px 0 0;
 }
 
+.ria-alertas {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--color-sospechoso);
+  border-radius: 6px;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.ria-alertas-titulo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--color-sospechoso);
+}
+
+.ria-alertas ul {
+  margin: 6px 0;
+  padding-left: 18px;
+  font-size: 0.875rem;
+}
+
 .ria-pie {
   margin: 0;
 }

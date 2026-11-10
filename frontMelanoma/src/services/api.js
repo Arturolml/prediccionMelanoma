@@ -96,6 +96,8 @@ export const api = {
                 return res.json();
             });
         },
+        // Para las evaluaciones que se guardaron porque la IA no respondió.
+        reanalizar: (id) => fetchWithAuth(`/evaluaciones/${id}/reanalizar`, { method: 'POST' }),
         // Foto de la evaluación y mapas de la IA como blob (los endpoints exigen
         // sesión, así que no se puede poner la URL directa en un <img>).
         getArchivo: async (ruta) => {

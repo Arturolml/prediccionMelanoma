@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, InternalServerErrorException, HttpException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, InternalServerErrorException, HttpException, Logger } from '@nestjs/common';
 import { CreateEvaluacioneDto } from './dto/create-evaluacione.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { Prisma } from '@prisma/client';
@@ -21,6 +21,7 @@ export interface ContextoAnalisis {
   id_lesion?: number;
   id_paciente?: number;
   sitio_anatomico?: string;
+  ancho_campo_mm?: number;
 }
 
 @Injectable()
@@ -29,14 +30,21 @@ export class EvaluacionesService {
 
   constructor(private prisma: PrismaService, private ia: IaService) { }
 
-  /** Foto de la evaluación más reciente de la lesión (para el criterio E de evolución). */
-  private async imagenPrevia(idLesion: number): Promise<string | null> {
+  /**
+   * Foto y escala de la evaluación más reciente de la lesión, para el criterio E
+   * de evolución. Con antesDe, solo entre las evaluaciones anteriores a esa.
+   */
+  private async previa(idLesion: number, antesDe?: number) {
     const previa = await this.prisma.evaluaciones.findFirst({
-      where: { id_lesion: idLesion },
+      where: { id_lesion: idLesion, ...(antesDe ? { id_evaluacion: { lt: antesDe } } : {}) },
       orderBy: { fecha_evaluacion: 'desc' },
-      select: { ruta_imagen: true },
+      select: { ruta_imagen: true, resultado_ia: true },
     });
-    return resolverRutaGuardada(previa?.ruta_imagen);
+    const resultado = previa?.resultado_ia as { escala?: { px_por_mm?: number | null } } | null | undefined;
+    return {
+      rutaImagenPrevia: resolverRutaGuardada(previa?.ruta_imagen),
+      pxPorMmPrevia: resultado?.escala?.px_por_mm ?? null,
+    };
   }
 
   private validarSitio(sitio: string | undefined): string | undefined {
@@ -55,7 +63,7 @@ export class EvaluacionesService {
     try {
       let sitio = this.validarSitio(contexto.sitio_anatomico);
       let paciente;
-      let rutaPrevia: string | null = null;
+      let previa = {};
       if (contexto.id_lesion) {
         const lesion = await this.prisma.lesiones.findUnique({
           where: { id_lesion: contexto.id_lesion },
@@ -64,7 +72,7 @@ export class EvaluacionesService {
         if (!lesion?.pacientes) throw new BadRequestException('La lesión especificada no existe.');
         paciente = lesion.pacientes;
         sitio = sitio ?? lesion.sitio_anatomico;
-        rutaPrevia = await this.imagenPrevia(lesion.id_lesion);
+        previa = await this.previa(lesion.id_lesion);
       } else if (contexto.id_paciente) {
         paciente = await this.prisma.pacientes.findUnique({ where: { id_paciente: contexto.id_paciente } });
         if (!paciente) throw new BadRequestException('El paciente especificado no existe.');
@@ -76,7 +84,8 @@ export class EvaluacionesService {
         rutaImagen: imagePath,
         paciente,
         sitio: sitio ?? 'unknown',
-        rutaImagenPrevia: rutaPrevia,
+        anchoCampoMm: contexto.ancho_campo_mm,
+        ...previa,
       });
       return {
         success: true,
@@ -116,7 +125,7 @@ export class EvaluacionesService {
         // Carpeta por id de paciente (antes por CURP) y nombre aleatorio que
         // asigna multer (antes se usaba el nombre que mandaba el cliente, que
         // podia contener ../ y escribir fuera de uploads).
-        const rutaPrevia = await this.imagenPrevia(lesion.id_lesion);
+        const previa = await this.previa(lesion.id_lesion);
         const newPath = path.join(carpetaPaciente(paciente.id_paciente), file.filename);
         fs.renameSync(file.path, newPath);
         finalPath = rutaPublica(newPath);
@@ -129,7 +138,8 @@ export class EvaluacionesService {
             paciente,
             sitio: lesion.sitio_anatomico,
             fechaReferencia: dto.fecha_evaluacion ?? new Date(),
-            rutaImagenPrevia: rutaPrevia,
+            anchoCampoMm: dto.ancho_campo_mm,
+            ...previa,
           });
           camposIA = { ...IaService.camposEvaluacion(resultado), ...IaService.guardarMapas(resultado, paciente.id_paciente) };
         } catch (err: any) {
@@ -151,6 +161,43 @@ export class EvaluacionesService {
       if (file) borrarSiExiste(file.path);
       this.handleDBExceptions(error);
     }
+  }
+
+  /**
+   * Análisis de una evaluación que quedó sin resultado porque la IA no respondió.
+   * Las que ya tienen resultado, incluidas las del modelo anterior, no se tocan:
+   * son el registro de lo que se vio en su momento.
+   */
+  async reanalizar(id: number) {
+    const evaluacion = await this.prisma.evaluaciones.findUnique({
+      where: { id_evaluacion: id },
+      include: { lesiones: { include: { pacientes: true } } },
+    });
+    if (!evaluacion) throw new NotFoundException(`Evaluación con ID ${id} no encontrada`);
+    if (evaluacion.prediccion_ia != null || evaluacion.decision_ia != null) {
+      throw new ConflictException('La evaluación ya tiene resultado de la IA.');
+    }
+    const lesion = evaluacion.lesiones;
+    if (!lesion?.pacientes) throw new BadRequestException('La evaluación no tiene un paciente asociado válido.');
+    const rutaImagen = resolverRutaGuardada(evaluacion.ruta_imagen);
+    if (!rutaImagen) throw new NotFoundException('La evaluación no tiene imagen disponible');
+
+    const resultado = await this.ia.analizar({
+      rutaImagen,
+      paciente: lesion.pacientes,
+      sitio: lesion.sitio_anatomico,
+      fechaReferencia: evaluacion.fecha_evaluacion ?? new Date(),
+      anchoCampoMm: evaluacion.ancho_campo_mm != null ? Number(evaluacion.ancho_campo_mm) : undefined,
+      ...(await this.previa(lesion.id_lesion, id)),
+    });
+    return this.prisma.evaluaciones.update({
+      where: { id_evaluacion: id },
+      data: {
+        ...IaService.camposEvaluacion(resultado),
+        ...IaService.guardarMapas(resultado, lesion.pacientes.id_paciente),
+      } as Prisma.evaluacionesUncheckedUpdateInput,
+      include: { lesiones: true },
+    });
   }
 
   async findAll(id_paciente?: number, id_lesion?: number) {

@@ -1,10 +1,34 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_app_1/constants/sitios.dart';
 import 'package:flutter_app_1/services/api_service.dart';
 
 String _pct(dynamic p) => '${(100 * (p as num)).toStringAsFixed(1)}%';
+
+List<num> _semillas(Map<String, dynamic> d) =>
+    ((d['prob_por_semilla'] as List?) ?? []).whereType<num>().toList();
+
+/// Las semillas del ensamble quedan a ambos lados del umbral: en los hospitales
+/// externos, esos casos fallan de 3 a 5 veces más que los demás.
+bool semillasDiscrepan(Map<String, dynamic> d) {
+  final p = _semillas(d);
+  final umbral = d['umbral'];
+  return p.length > 1 && umbral is num && p.any((x) => x < umbral) && p.any((x) => x >= umbral);
+}
+
+/// Texto del criterio E con la unidad en que se pudo medir el cambio.
+String textoEvolucion(Map<String, dynamic>? e) {
+  if (e == null) return 'sin evaluación anterior de esta lesión';
+  if (e['error'] != null) return e['error'].toString();
+  final signo = (e['cambio_diametro_pct'] as num) >= 0 ? '+' : '';
+  final nota = e['unidad'] == 'mm'
+      ? ' (${(e['diametro_previo'] as num).toStringAsFixed(1)} → ${(e['diametro_actual'] as num).toStringAsFixed(1)} mm)'
+      : ' (sin escala en las dos fotos: comparable solo con el mismo encuadre)';
+  final colores = ((e['colores_nuevos'] as List?) ?? []).map((c) => _nombreColor[c] ?? c.toString()).join(', ');
+  return 'diámetro $signo${e['cambio_diametro_pct']}%$nota${colores.isNotEmpty ? ', colores nuevos: $colores' : ''}';
+}
 
 const Map<String, String> _nombreColor = {
   'negro': 'negro',
@@ -38,7 +62,19 @@ class ResultadoIAView extends StatelessWidget {
   final Map<String, dynamic> resultado;
   final dynamic idEvaluacion;
 
-  const ResultadoIAView({super.key, required this.resultado, this.idEvaluacion});
+  /// Evaluación anterior de la misma lesión, para comparar las fotos.
+  final dynamic idEvaluacionPrevia;
+
+  /// Foto del análisis en vivo (la evaluación todavía no se guarda).
+  final File? fotoActual;
+
+  const ResultadoIAView({
+    super.key,
+    required this.resultado,
+    this.idEvaluacion,
+    this.idEvaluacionPrevia,
+    this.fotoActual,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -103,10 +139,14 @@ class ResultadoIAView extends StatelessWidget {
         _aporteMetadatos(fusion, Map<String, dynamic>.from(resultado['metadatos_usados'] ?? {})),
         const SizedBox(height: 12),
         _abcde(resultado['abcde'] as Map<String, dynamic>?),
+        if (idEvaluacionPrevia != null && (resultado['abcde'] as Map<String, dynamic>?)?['evolucion'] != null) ...[
+          const SizedBox(height: 12),
+          _comparacion(),
+        ],
         const SizedBox(height: 8),
         Text(
-          resultado['advertencia_uso_clinico']?.toString() ??
-              'Herramienta de apoyo a la decisión; no sustituye la evaluación dermatológica.',
+          '${resultado['advertencia_uso_clinico'] ?? 'Herramienta de apoyo a la decisión; no sustituye la evaluación dermatológica.'}'
+          '${resultado['politica'] != null ? ' Política: ${resultado['politica']}.' : ''}',
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
       ],
@@ -134,12 +174,56 @@ class ResultadoIAView extends StatelessWidget {
             'umbral ${_pct(d['umbral'])} · ${sospecha ? 'marca sospecha' : 'no marca sospecha'}',
             style: const TextStyle(fontSize: 11, color: Colors.black54),
           ),
+          if (_semillas(d).isNotEmpty)
+            Text(
+              'semillas: ${_pct(_semillas(d).reduce((a, b) => a < b ? a : b))} a ${_pct(_semillas(d).reduce((a, b) => a > b ? a : b))}',
+              style: const TextStyle(fontSize: 11, color: Colors.black54),
+            ),
+          if (semillasDiscrepan(d))
+            Text(
+              '⚠ Resultado inestable: las semillas no coinciden',
+              style: TextStyle(fontSize: 11, color: Colors.orange.shade900),
+            ),
         ],
       ),
     );
   }
 
+  /// La misma lesión en la evaluación anterior y en esta, lado a lado.
+  Widget _comparacion() {
+    Widget foto(Widget imagen, String titulo) => Expanded(
+      child: Column(
+        children: [
+          AspectRatio(aspectRatio: 1, child: ClipRRect(borderRadius: BorderRadius.circular(6), child: imagen)),
+          Text(titulo, style: const TextStyle(fontSize: 11, color: Colors.black54)),
+        ],
+      ),
+    );
+    Widget red(dynamic id) => Image.network(
+      ApiService.urlImagenEvaluacion(id),
+      headers: ApiService().imagenHeaders,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => const Icon(Icons.image_not_supported, color: Colors.grey),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Comparación con la evaluación anterior', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 6),
+        Row(
+          children: [
+            foto(red(idEvaluacionPrevia), 'Anterior'),
+            const SizedBox(width: 6),
+            foto(fotoActual != null ? Image.file(fotoActual!, fit: BoxFit.cover) : red(idEvaluacion), 'Esta evaluación'),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _mapa(String titulo, dynamic base64Png, String tipo) {
+    // Análisis en vivo sin ese mapa (no se encontró la lesión).
+    if (base64Png is! String && idEvaluacion == null) return const SizedBox.shrink();
     final Widget imagen = base64Png is String
         ? Image.memory(base64Decode(base64Png), fit: BoxFit.cover)
         : Image.network(
@@ -207,16 +291,9 @@ class ResultadoIAView extends StatelessWidget {
       ('C · Color', '${a['n_colores']} de 6${colores.isNotEmpty ? ' ($colores)' : ''}'),
       (
         'D · Diámetro',
-        a['diametro_mm'] != null ? '${(a['diametro_mm'] as num).toStringAsFixed(1)} mm' : 'sin escala en la foto',
+        a['diametro_mm'] != null ? '${(a['diametro_mm'] as num).toStringAsFixed(1)} mm' : 'sin escala: indique el ancho de la foto',
       ),
-      (
-        'E · Evolución',
-        e == null
-            ? 'sin evaluación anterior de esta lesión'
-            : e['error'] != null
-            ? e['error'].toString()
-            : 'diámetro ${(e['cambio_diametro_pct'] as num) >= 0 ? '+' : ''}${e['cambio_diametro_pct']}%',
-      ),
+      ('E · Evolución', textoEvolucion(e)),
     ];
     final advertencias = ((a['advertencias'] as List?) ?? [])
         .map((x) => x.toString())

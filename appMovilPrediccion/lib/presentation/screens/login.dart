@@ -55,7 +55,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _login() async {
     if (_formKey.currentState!.validate()) {
-      final email = _emailController.text;
+      // El teclado móvil suele agregar un espacio al final al autocompletar
+      final email = _emailController.text.trim();
       final password = _passwordController.text;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -93,9 +94,13 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error en login. Verifique credenciales.'),
+          SnackBar(
+            content: Text(
+              ApiService().lastLoginError ??
+                  'Error en login. Verifique credenciales.',
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
           ),
         );
       }
@@ -160,6 +165,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: TextInputType.emailAddress,
+                  autocorrect: false,
+                  textCapitalization: TextCapitalization.none,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Por favor ingrese su correo';

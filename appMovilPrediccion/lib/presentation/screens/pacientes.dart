@@ -27,13 +27,16 @@ class _PacientesScreenState extends State<PacientesScreen> {
     _initSocket();
   }
 
+  bool _avisoSocketMostrado = false;
+
   void _initSocket() {
     final userId = ApiService().currentUserid;
     if (userId == null) return;
 
     // El backend autentica el socket con el token de sesión y lo une a la
     // sala de este usuario (ya no se elige la sala con un userId).
-    socket = IO.io(ApiService.baseUrl, <String, dynamic>{
+    socket = IO.io(ApiService.socketOrigin, <String, dynamic>{
+      'path': ApiService.socketPath,
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': ApiService().token},
@@ -43,6 +46,46 @@ class _PacientesScreenState extends State<PacientesScreen> {
 
     socket!.onConnect((_) {
       print('✅ Socket connected');
+      // Solo se avisa si antes hubo una falla de conexión
+      if (_avisoSocketMostrado && mounted) {
+        _avisoSocketMostrado = false;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Conexión en tiempo real con la Web restablecida.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    });
+
+    socket!.on('error_autenticacion', (data) {
+      print('❌ Socket rechazado por el servidor: $data');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'El servidor rechazó la sesión. Cierre sesión y vuelva a entrar.',
+          ),
+          backgroundColor: Colors.red,
+          duration: Duration(seconds: 8),
+        ),
+      );
+    });
+
+    socket!.onConnectError((err) {
+      print('❌ Socket connect error: $err');
+      // La librería reintenta sola; un solo aviso aunque falle varias veces
+      if (!mounted || _avisoSocketMostrado) return;
+      _avisoSocketMostrado = true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Sin conexión en tiempo real con la Web. Reintentando...\n$err',
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 8),
+        ),
+      );
     });
 
     socket!.on('abrir_camara', (_) async {
@@ -55,9 +98,11 @@ class _PacientesScreenState extends State<PacientesScreen> {
       );
 
       final ImagePicker picker = ImagePicker();
+      // maxWidth mantiene el base64 bajo el límite de 1 MB de Socket.IO
       final XFile? image = await picker.pickImage(
         source: ImageSource.camera,
         imageQuality: 70,
+        maxWidth: 1600,
       );
 
       if (image != null && mounted) {

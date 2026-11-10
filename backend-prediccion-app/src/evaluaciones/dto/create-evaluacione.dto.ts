@@ -43,6 +43,10 @@ export class CreateEvaluacioneDto {
     diametro_mm?: number;
 
     @IsOptional()
+    @IsNumber()
+    ancho_campo_mm?: number;
+
+    @IsOptional()
     @IsBoolean()
     evolucion_cambios?: boolean;
 

@@ -38,6 +38,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
       # El backend llama a la IA por la red interna de Docker, no por el dominio publico.
       IA_API_URL: http://api_ia:8000
+      # consulta o cribado (ver .env.example)
+      IA_POLITICA: ${IA_POLITICA:-consulta}
       PORT: 3007
     ports:
       - "127.0.0.1:3008:3007" # Expuesto al host para que tu Nginx Nativo lo alcance (ej. proxy_pass http://localhost:3008)

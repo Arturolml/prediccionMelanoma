@@ -25,7 +25,8 @@ export class UsuariosService {
         password_hash: hash,
         rol: dto.rol,
         cedula_profesional: dto.cedula_profesional,
-        telefono_contacto: dto.telefono_contacto
+        telefono_contacto: dto.telefono_contacto,
+        activo: dto.activo
       },
       select: SIN_HASH,
     })

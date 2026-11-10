@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_app_1/services/database_helper.dart';
@@ -14,14 +16,32 @@ class ApiService {
 
   ApiService._internal();
 
-  //static const String baseUrl = 'https://liaaproyectos.uaz.edu.mx';
-  static const String baseUrl = 'http://192.168.100.20:3007';
+  /// URL del backend. En producción va detrás de /apiprediccion; para una
+  /// red local se cambia al compilar:
+  ///   flutter run --dart-define=API_BASE_URL=http://192.168.100.20:3007
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://liaaproyectos.uaz.edu.mx/apiprediccion',
+  );
+
+  /// Socket.IO: el origen va sin la ruta (si no, la ruta se toma como
+  /// namespace) y la ruta del proxy va en `path`, igual que en la web.
+  static String get socketOrigin => Uri.parse(baseUrl).origin;
+  static String get socketPath {
+    final ruta = Uri.parse(baseUrl).path;
+    final base = ruta.endsWith('/') ? ruta.substring(0, ruta.length - 1) : ruta;
+    return '$base/socket.io';
+  }
   String? _token;
   int? currentUserid;
 
   // --- Auth ---
 
+  /// Último motivo de falla del login, para mostrarlo al usuario.
+  String? lastLoginError;
+
   Future<bool> login(String email, String password) async {
+    lastLoginError = null;
     try {
       var connectivityResult = await (Connectivity().checkConnectivity());
       bool isOffline = connectivityResult.contains(ConnectivityResult.none);
@@ -43,6 +63,8 @@ class ApiService {
           print(
             '❌ Login offline fallido: no hay credenciales cacheadas o no coinciden.',
           );
+          lastLoginError =
+              'Sin conexión a Internet y no hay una sesión guardada para este correo.';
           return false;
         }
       }
@@ -52,7 +74,7 @@ class ApiService {
         Uri.parse('$baseUrl/auth/login'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email, 'password': password}),
-      );
+      ).timeout(const Duration(seconds: 20));
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
@@ -69,10 +91,23 @@ class ApiService {
         return true;
       } else {
         print('❌ Error en login: ${response.body}');
+        lastLoginError = response.statusCode == 401
+            ? 'Correo o contraseña incorrectos.'
+            : 'El servidor respondió con error ${response.statusCode}.';
         return false;
       }
+    } on TimeoutException {
+      lastLoginError = 'El servidor no respondió a tiempo ($baseUrl).';
+      return false;
+    } on SocketException catch (e) {
+      lastLoginError = 'No se pudo conectar con el servidor: ${e.message}';
+      return false;
+    } on HandshakeException catch (e) {
+      lastLoginError = 'Error de certificado HTTPS: ${e.message}';
+      return false;
     } catch (e) {
       print('❌ Excepción en login: $e');
+      lastLoginError = 'Error inesperado: $e';
       return false;
     }
   }
@@ -124,6 +159,26 @@ class ApiService {
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Bearer $_token',
     };
+  }
+
+  /// La foto como parte multipart con su tipo MIME. El backend solo acepta
+  /// image/jpeg, image/png e image/webp; sin contentType, http manda
+  /// application/octet-stream y la foto se rechaza.
+  Future<http.MultipartFile> _imagenMultipart(File imageFile) async {
+    final nombre = imageFile.uri.pathSegments.last;
+    final ext = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+    final subtipo = switch (ext) {
+      'png' => 'png',
+      'webp' => 'webp',
+      _ => 'jpeg',
+    };
+    return http.MultipartFile(
+      'imagen',
+      http.ByteStream(imageFile.openRead()),
+      await imageFile.length(),
+      filename: nombre,
+      contentType: MediaType('image', subtipo),
+    );
   }
 
   // --- Pacientes ---
@@ -293,7 +348,41 @@ class ApiService {
     }
   }
 
+  /// Corrige el sitio anatómico de una lesión existente.
+  Future<bool> updateLesionSitio(int id, String sitioAnatomico) async {
+    try {
+      final response = await http.patch(
+        Uri.parse('$baseUrl/lesiones/$id'),
+        headers: _authHeaders,
+        body: jsonEncode({'sitio_anatomico': sitioAnatomico}),
+      );
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Excepción actualizando lesión: $e');
+      return false;
+    }
+  }
+
   // --- Evaluaciones (con Imagen) ---
+
+  /// Pide el análisis de una evaluación que se guardó porque la IA no respondió.
+  /// Devuelve la evaluación actualizada o null si la IA sigue sin responder.
+  Future<Map<String, dynamic>?> reanalizarEvaluacion(dynamic id) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/evaluaciones/$id/reanalizar'),
+        headers: _authHeaders,
+      );
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return jsonDecode(response.body) as Map<String, dynamic>;
+      }
+      print('❌ Error reanalizando evaluación: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      print('❌ Excepción reanalizando evaluación: $e');
+      return null;
+    }
+  }
 
   Future<bool> createEvaluacion(
     Map<String, dynamic> data,
@@ -332,15 +421,7 @@ class ApiService {
       });
 
       // Agregar imagen
-      var stream = http.ByteStream(imageFile.openRead());
-      var length = await imageFile.length();
-      var multipartFile = http.MultipartFile(
-        'imagen',
-        stream,
-        length,
-        filename: imageFile.path.split('/').last,
-      );
-      request.files.add(multipartFile);
+      request.files.add(await _imagenMultipart(imageFile));
 
       var response = await request.send();
 
@@ -451,15 +532,7 @@ class ApiService {
           request.fields[key] = value.toString();
         });
 
-        var stream = http.ByteStream(imageFile.openRead());
-        var length = await imageFile.length();
-        var multipartFile = http.MultipartFile(
-          'imagen',
-          stream,
-          length,
-          filename: imageFile.path.split('/').last,
-        );
-        request.files.add(multipartFile);
+        request.files.add(await _imagenMultipart(imageFile));
 
         var response = await request.send();
 
@@ -480,6 +553,9 @@ class ApiService {
 
   // --- Evaluaciones (Predict Live) ---
 
+  /// Último motivo de falla del análisis con la IA, para mostrarlo al usuario.
+  String? lastPredictError;
+
   /// Análisis en vivo con la IA. El backend necesita el paciente (o la
   /// lesión) para mandar edad y sexo a la IA, y el sitio anatómico.
   Future<Map<String, dynamic>?> predictEvaluacionLive(
@@ -487,7 +563,9 @@ class ApiService {
     int? idPaciente,
     int? idLesion,
     String? sitioAnatomico,
+    double? anchoCampoMm,
   }) async {
+    lastPredictError = null;
     try {
       var request = http.MultipartRequest(
         'POST',
@@ -501,18 +579,13 @@ class ApiService {
       if (sitioAnatomico != null) {
         request.fields['sitio_anatomico'] = sitioAnatomico;
       }
+      if (anchoCampoMm != null) {
+        request.fields['ancho_campo_mm'] = '$anchoCampoMm';
+      }
 
-      var stream = http.ByteStream(imageFile.openRead());
-      var length = await imageFile.length();
-      var multipartFile = http.MultipartFile(
-        'imagen',
-        stream,
-        length,
-        filename: imageFile.path.split('/').last,
-      );
-      request.files.add(multipartFile);
+      request.files.add(await _imagenMultipart(imageFile));
 
-      var response = await request.send();
+      var response = await request.send().timeout(const Duration(seconds: 60));
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final respStr = await response.stream.bytesToString();
@@ -521,10 +594,32 @@ class ApiService {
       } else {
         final respStr = await response.stream.bytesToString();
         print('❌ Error en predicción live: $respStr');
+        String detalle = respStr;
+        try {
+          final body = jsonDecode(respStr);
+          if (body is Map && body['message'] != null) {
+            detalle = body['message'].toString();
+          }
+        } catch (_) {}
+        if (detalle.length > 200) detalle = detalle.substring(0, 200);
+        lastPredictError = switch (response.statusCode) {
+          401 => 'Sesión no válida o vencida. Cierre sesión y vuelva a entrar.',
+          403 =>
+            'Su usuario no tiene permiso para analizar (solo médico o enfermero).',
+          413 => 'La imagen es demasiado grande para el servidor.',
+          _ => 'Error ${response.statusCode} del servidor: $detalle',
+        };
         return null;
       }
+    } on TimeoutException {
+      lastPredictError = 'El servidor no respondió en 60 segundos.';
+      return null;
+    } on SocketException catch (e) {
+      lastPredictError = 'No se pudo conectar con el servidor: ${e.message}';
+      return null;
     } catch (e) {
       print('❌ Excepción en predicción live: $e');
+      lastPredictError = 'Error inesperado: $e';
       return null;
     }
   }
