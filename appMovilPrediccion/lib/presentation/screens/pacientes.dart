@@ -33,7 +33,8 @@ class _PacientesScreenState extends State<PacientesScreen> {
 
     // El backend autentica el socket con el token de sesión y lo une a la
     // sala de este usuario (ya no se elige la sala con un userId).
-    socket = IO.io(ApiService.baseUrl, <String, dynamic>{
+    socket = IO.io(ApiService.socketOrigin, <String, dynamic>{
+      'path': ApiService.socketPath,
       'transports': ['websocket'],
       'autoConnect': false,
       'auth': {'token': ApiService().token},

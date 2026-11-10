@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_app_1/services/database_helper.dart';
@@ -14,8 +15,22 @@ class ApiService {
 
   ApiService._internal();
 
-  //static const String baseUrl = 'https://liaaproyectos.uaz.edu.mx';
-  static const String baseUrl = 'http://192.168.100.20:3007';
+  /// URL del backend. En producción va detrás de /apiprediccion; para una
+  /// red local se cambia al compilar:
+  ///   flutter run --dart-define=API_BASE_URL=http://192.168.100.20:3007
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'https://liaaproyectos.uaz.edu.mx/apiprediccion',
+  );
+
+  /// Socket.IO: el origen va sin la ruta (si no, la ruta se toma como
+  /// namespace) y la ruta del proxy va en `path`, igual que en la web.
+  static String get socketOrigin => Uri.parse(baseUrl).origin;
+  static String get socketPath {
+    final ruta = Uri.parse(baseUrl).path;
+    final base = ruta.endsWith('/') ? ruta.substring(0, ruta.length - 1) : ruta;
+    return '$base/socket.io';
+  }
   String? _token;
   int? currentUserid;
 
@@ -124,6 +139,26 @@ class ApiService {
       'Content-Type': 'application/json',
       if (_token != null) 'Authorization': 'Bearer $_token',
     };
+  }
+
+  /// La foto como parte multipart con su tipo MIME. El backend solo acepta
+  /// image/jpeg, image/png e image/webp; sin contentType, http manda
+  /// application/octet-stream y la foto se rechaza.
+  Future<http.MultipartFile> _imagenMultipart(File imageFile) async {
+    final nombre = imageFile.uri.pathSegments.last;
+    final ext = nombre.contains('.') ? nombre.split('.').last.toLowerCase() : '';
+    final subtipo = switch (ext) {
+      'png' => 'png',
+      'webp' => 'webp',
+      _ => 'jpeg',
+    };
+    return http.MultipartFile(
+      'imagen',
+      http.ByteStream(imageFile.openRead()),
+      await imageFile.length(),
+      filename: nombre,
+      contentType: MediaType('image', subtipo),
+    );
   }
 
   // --- Pacientes ---
@@ -366,15 +401,7 @@ class ApiService {
       });
 
       // Agregar imagen
-      var stream = http.ByteStream(imageFile.openRead());
-      var length = await imageFile.length();
-      var multipartFile = http.MultipartFile(
-        'imagen',
-        stream,
-        length,
-        filename: imageFile.path.split('/').last,
-      );
-      request.files.add(multipartFile);
+      request.files.add(await _imagenMultipart(imageFile));
 
       var response = await request.send();
 
@@ -485,15 +512,7 @@ class ApiService {
           request.fields[key] = value.toString();
         });
 
-        var stream = http.ByteStream(imageFile.openRead());
-        var length = await imageFile.length();
-        var multipartFile = http.MultipartFile(
-          'imagen',
-          stream,
-          length,
-          filename: imageFile.path.split('/').last,
-        );
-        request.files.add(multipartFile);
+        request.files.add(await _imagenMultipart(imageFile));
 
         var response = await request.send();
 
@@ -540,15 +559,7 @@ class ApiService {
         request.fields['ancho_campo_mm'] = '$anchoCampoMm';
       }
 
-      var stream = http.ByteStream(imageFile.openRead());
-      var length = await imageFile.length();
-      var multipartFile = http.MultipartFile(
-        'imagen',
-        stream,
-        length,
-        filename: imageFile.path.split('/').last,
-      );
-      request.files.add(multipartFile);
+      request.files.add(await _imagenMultipart(imageFile));
 
       var response = await request.send();
 
