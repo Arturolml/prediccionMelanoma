@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_app_1/presentation/screens/comparar_evaluaciones.dart';
 import 'package:flutter_app_1/presentation/screens/crear_evaluacion.dart';
 import 'package:flutter_app_1/presentation/screens/detalle_evaluacion.dart';
 import 'package:flutter_app_1/services/api_service.dart';
@@ -146,6 +147,23 @@ class _DetallePacienteScreenState extends State<DetallePacienteScreen> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
+                const Spacer(),
+                if (CompararEvaluacionesScreen.conImagen(evaluaciones).length >=
+                    2)
+                  TextButton.icon(
+                    icon: const Icon(Icons.compare),
+                    label: const Text('Comparar'),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => CompararEvaluacionesScreen(
+                            evaluaciones: evaluaciones,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ),

@@ -201,7 +201,13 @@ class _CrearEvaluacionScreenState extends State<CrearEvaluacionScreen> {
       });
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Error al procesar la imagen con IA.')),
+        SnackBar(
+          content: Text(
+            api.lastPredictError ?? 'Error al procesar la imagen con IA.',
+          ),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 8),
+        ),
       );
     }
   }
